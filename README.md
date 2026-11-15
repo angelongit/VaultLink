@@ -110,4 +110,3 @@ Documentation/       Project plan and test screenshots
 ## Authors
 
 - Angel Lopez
-- _Teammate name_
