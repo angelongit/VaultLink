@@ -1,0 +1,15 @@
+# --- Reference material, not our own work ---
+/VaultLink/
+/README.md
+
+# --- Keil uVision build output (regenerated on every build) ---
+Objects/
+Listings/
+DebugConfig/
+*.uvguix.*
+*.uvoptx
+*.cbuild-gen*.yml
+EventRecorderStub.scvd
+
+# --- STM32CubeMX / HAL C files (to be removed from the Keil project; assembly only) ---
+STM32CubeMX/
