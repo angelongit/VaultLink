@@ -28,8 +28,12 @@ __main 	PROC
 		ORR r1,r1,#0x5500 ;setting PC4-7 to pull-up
 		STR r1,[r0,#0x0C] ;write back to PUPDR
 		
-		
+		;; WATCHING FOR INPUT ;; 
 		;loop input logic; see notes for register mapping;
+		;;this loop scans the keypad for any input. One row is driven low at a time, all columns are read together. 
+		;;Depending on if key is pressed or not, jumps to respective branch;;
+		;;KeyFound: r3 will hold column pattern, r8 will hold row. This is decoded in the following section;
+		;;No key pressed? loop back to patterncheck, if all rows checked branch to CounterReset and start loop over;;
 		LDR r1,=RowPatterns ; loading table address into r1
 CounterReset
 		MOV r8,#0 ;counter register	
@@ -55,18 +59,19 @@ KeypadSettle	SUBS r10,r10,#1
 		BNE KeyFound
 		
 		;; NO KEY PRESSED;;
-		ADD r8,r8,#1
-		CMP r8,#4
-		BLO PatternCheck
+		ADD r8,r8,#1 ;;increment counter
+		CMP r8,#4 ;; check if all table values have been parsed;;
+		BLO PatternCheck ;;continue through table if not;;
 		
-		B CounterReset
+		B CounterReset ;; if counter > 4, reset counter and keep looping
 		
 KeyFound B KeyFound
 
-
+	ENDP
 
 	AREA DATA1, DATA, READONLY
 RowPatterns DCB 0xE,0xD,0xB,0x7 ; determining row key is on via 0 bit
 
 
 	END
+	
