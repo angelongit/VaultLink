@@ -31,10 +31,11 @@ __main 	PROC
 	
 	
 stop B stop
-
+	ENDP
 
 
 	AREA DATA1, DATA, READONLY
-RowPatterns DCB 0xE,0xD,0xB,0x7
-	ENDP
+RowPatterns DCB 0xE,0xD,0xB,0x7 ; determining row key is on via 0 bit
+
+
 	END
