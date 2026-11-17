@@ -27,11 +27,42 @@ __main 	PROC
 		BIC r1,r1,r2 ;clear lower 16 bits ,same as I/O set up. Reusing value already in r2
 		ORR r1,r1,#0x5500 ;setting PC4-7 to pull-up
 		STR r1,[r0,#0x0C] ;write back to PUPDR
-	
-	
-	
-stop B stop
-	ENDP
+		
+		
+		;loop input logic; see notes for register mapping;
+		LDR r1,=RowPatterns ; loading table address into r1
+CounterReset
+		MOV r8,#0 ;counter register	
+PatternCheck	
+		LDRB r9,[r1,r8] ;;LDRB : each table entry is one byte, writing plain LDR would grab all four of our table entries; ;;lookup;;
+		LDR r7,[r0,#0x14] ;; writing ODR contents to scratch register to modify ;;read
+		BIC r7,r7,#0xF ;; clearing first 4 bits
+		ORR r7,r9,r7 ; copies 1's from current table value into modified ODR
+		STR r7,[r0,#0x14] ;; writing back modified ODR to original ODR ;;write
+		
+		;;countdown;;
+		MOV r10,#1000
+KeypadSettle	SUBS r10,r10,#1
+		BNE KeypadSettle
+		
+		;;idr;;
+		LDR r7,[r0,#0x10] ;; read GPIOC IDR 
+		AND r3,r7,#0xF0 ;; clearing everything except bits 4-7
+		LSR r3, r3, #4 ;; this line shifts the IDR bits 4-7 to 0-3 to simplify comparison with key pattern (0xE0 vs 0xE)
+		
+		;; comparison ;; 
+		CMP r3,#0xF ;; "was anything pressed?"
+		BNE KeyFound
+		
+		;; NO KEY PRESSED;;
+		ADD r8,r8,#1
+		CMP r8,#4
+		BLO PatternCheck
+		
+		B CounterReset
+		
+KeyFound B KeyFound
+
 
 
 	AREA DATA1, DATA, READONLY

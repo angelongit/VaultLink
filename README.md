@@ -28,8 +28,8 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 |---|---|
 | Keypad wiring mapped and verified | ✅ Done |
 | GPIOC configured for the keypad (clock, modes, pull-ups) | ✅ Verified on hardware |
-| Row scan loop | ⬜ Next |
-| Key decoding and debounce | ⬜ Planned |
+| Row scan loop | ✅ Verified in simulator (board test pending) |
+| Key decoding and debounce | ⬜ Next |
 | 16×2 LCD output | ⬜ Planned |
 | Lock logic (PINs, lockout, re-lock) | ⬜ Planned |
 | Servo latch, buzzer, status LEDs | ⬜ Planned |
@@ -100,11 +100,16 @@ The scan drives these row patterns in turn, stored in a lookup table:
 3. Build (**F7**), then start a debug session (**Ctrl+F5**) to flash the board.
 4. Open **Peripherals → System Viewer → GPIO → GPIOC** to watch the keypad inputs live.
 
+## Documentation
+
+- [Design decisions](Documentation/design-decisions.md): every design choice and the reasoning behind it
+- [Pin map and test log](Documentation/pinout.md)
+
 ## Repository layout
 
 ```
 Code/Keypad_Logic/   Keil project and assembly source
-Documentation/       Project plan and test screenshots
+Documentation/       Design decisions, pin map, test log, project plan, screenshots
 ```
 
 ## Authors
