@@ -67,3 +67,14 @@ Continuity checks: key `1` connects pins 1–5, key `2` connects pins 1–6, key
 | `8` | 2 | `0xD` | 1 | [KeyFound_Holding8](KeyFound_Holding8.png) |
 | `#` | 3 | `0xB` | 2 | [KeyFound_HoldingHash](KeyFound_HoldingHash.png) |
 | `D` | 3 | `0x7` | 3 | [KeyFound_HoldingD](KeyFound_HoldingD.png) |
+
+**Character lookup results** (board, 2026-11-17, breakpoint after `LDRB r9`):
+
+| Key | r7 (key number) | r9 (ASCII) | Screenshot |
+|---|---|---|---|
+| `6` | 6 | `0x36` | [ColumnFound_Holding6](ColumnFound_Holding6.png) |
+| `#` | 14 (`0xE`) | `0x23` | [ColumnFound_HoldingHash](ColumnFound_HoldingHash.png) |
+| `D` | 15 (`0xF`) | `0x44` | [ColumnFound_HoldingD](ColumnFound_HoldingD.png) |
+
+**Release wait and bounce delay** (board, 2026-11-17): breakpoint on `wait`. Holding `6` (also for
+several seconds) never reaches it; releasing reaches it right away ✅

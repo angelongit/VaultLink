@@ -42,6 +42,7 @@ __main 	PROC
 		;;KeyFound: r3 will hold column pattern, r8 will hold row. This is decoded in the following section;
 		;;No key pressed? loop back to patterncheck, if all rows checked branch to CounterReset and start loop over;;
 		LDR r1,=RowPatterns ; loading table address into r1
+		LDR r11,=KeyValues
 CounterReset
 		MOV r8,#0 ;counter register	
 PatternCheck	
@@ -73,8 +74,7 @@ KeypadSettle	SUBS r10,r10,#1
 		B CounterReset ;; if counter = 4, reset counter and keep looping
 
 
-
-	;;DECIPHERING LOGIC
+	;;Finding Column / Key ; 
 KeyFound	MOV r4,#0
 SearchingTable	LDRB r5,[r1,r4]
 	CMP r5,r3
@@ -84,11 +84,36 @@ SearchingTable	LDRB r5,[r1,r4]
 	BLO SearchingTable
 	B CounterReset
 	
-ColumnFound B ColumnFound
+
+	;; Finding actual key ;;
+ColumnFound
+	ADD r7,r4,r8,LSL#2
+	LDRB r9,[r11,r7]
+
+
+ReleaseWait
+		LDR r7,[r0,#0x10] ;; read GPIOC IDR 
+		AND r3,r7,#0xF0 ;; clearing everything except bits 4-7
+		LSR r3, r3, #4 ;; this line shifts the IDR bits 4-7 to 0-3 to simplify comparison with key pattern (0xE0 vs 0xE)
+		
+		;; comparison ;; 
+		CMP r3,#0xF ;; "still holding?"
+		BNE ReleaseWait
+		LDR r10,=80000
+		;;loop
+BounceDelay
+		SUBS r10,r10,#1
+		BNE BounceDelay
+		
+wait B wait
+
 	ENDP
+		
+
 
 	AREA DATA1, DATA, READONLY
 RowPatterns DCB 0xE,0xD,0xB,0x7 ; determining row key is on via 0 bit
+KeyValues DCB "1","2","3","A","4","5","6","B","7","8","9","C","*","0","#","D"
 	AREA CurrentVariables,DATA, READWRITE
 PinBuffer SPACE 4 ;holds pin digits typed so far
 DigitCount SPACE 1 ; how many digits are in PinBuffer

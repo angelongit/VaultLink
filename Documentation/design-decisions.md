@@ -32,6 +32,8 @@ one **Superseded by #N**. Never delete an entry.
 | 22 | PIN digits stored as ASCII; `*` clears entry | Accepted |
 | 23 | Column decode by searching the `RowPatterns` table | Accepted |
 | 24 | Multi-key presses rejected by the column search | Accepted |
+| 25 | Key number = row × 4 + column, then a 16-byte ASCII lookup table | Accepted |
+| 26 | Wait for key release, then a 15 ms bounce delay | Accepted |
 
 ---
 
@@ -438,4 +440,58 @@ the code goes back to `CounterReset`.
 
 **Reasons.** Two keys in the same row pull two column bits low (`1` and `2` together give
 `1100`), which matches no single-zero table entry. The rejection costs no extra code.
+
+---
+
+## #25: Key number = row × 4 + column, then a 16-byte ASCII lookup table
+
+- **Date:** 2026-11-17 · **Status:** Accepted
+
+**Decision.** `ADD r7,r4,r8,LSL #2` gives the key number 0–15 in one instruction (row × 4 by a
+left shift of 2, plus the column). `LDRB r9,[r11,r7]` then reads the character from
+`KeyValues DCB "1","2","3","A", ... "*","0","#","D"`, stored in flash next to `RowPatterns`.
+r11 holds the table address, loaded once at setup.
+
+**Reasons.**
+- Each row holds 4 keys, so moving down a row adds 4; a shift is cheaper than `MUL`.
+- The table stores ASCII directly (#22), so `'6'` comes out as `0x36` with no conversion.
+- No terminating 0 byte is needed: the code jumps straight to one position, it never walks the
+  string.
+
+**Notes.**
+- The same shifted operand means different things: in `LDR r7,[r4,r8,LSL #2]` it builds an
+  **address** (that line was tried first and would have read memory at address 6); in `ADD` it is
+  a **value**.
+- r7 is scratch after the lookup; only r9 (the character) is kept.
+- Board: `KeyValues` sits at `0x080002E0`, exactly 4 bytes after `RowPatterns` (`0x080002DC`),
+  because the assembler packs an area in order.
+
+---
+
+## #26: Wait for key release, then a 15 ms bounce delay
+
+- **Date:** 2026-11-17 · **Status:** Accepted
+
+**Context.** A full scan takes about 0.75 ms. A normal 250 ms press would be detected about 333
+times, filling `PinBuffer` with `6666` and auto-submitting a PIN nobody typed. Separately, switch
+contacts bounce for roughly 5–20 ms when they open or close.
+
+**Decision.**
+1. `ReleaseWait`: after decoding, keep re-reading IDR (same `AND #0xF0` / `LSR #4` as the scan)
+   until the columns read `0xF`. ODR is left alone: the key's row is still driven low.
+2. `BounceDelay`: then count down 80,000 (≈ 15 ms).
+
+**Reasons.**
+- A fixed delay only guesses how long people hold keys. Waiting for the release **event** works
+  for any hold length.
+- The release edge can still bounce and look like a new press, and bounce has a known short
+  length, so a fixed delay is the right tool there.
+- Delay math: `SUBS` + taken `BNE` = 3 cycles × 62.5 ns = 187.5 ns per count;
+  15 ms ÷ 187.5 ns = 80,000. That is over 65,535, the largest `MOV` immediate, so it is loaded
+  with `LDR r10,=80000` (literal pool).
+
+**Bugs caught while writing it.** Branching back to `KeypadSettle` (a branch goes to a location,
+so it would have re-entered the scan), and putting the label on the `LDR` so the count reloaded
+every pass and never reached 0. A leftover `KeyReady B KeyReady` placeholder also blocked the
+path to `ReleaseWait`.
 
