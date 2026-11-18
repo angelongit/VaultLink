@@ -1,13 +1,20 @@
-	
-	
-	
-	
-	AREA KeypadLogic, CODE, READONLY	
+
+	AREA KeypadLogic, CODE, READONLY		
 	ENTRY
+	
 	EXPORT __main
 	
 __main 	PROC		
 	
+	
+	
+		;;clearing RAM;;
+		LDR r0, =PinBuffer
+		MOV r1, #0x0
+		STR r1,[r0]
+		LDR r0, =DigitCount
+		STRB r1,[r0]
+		
 		;setting up AHB1ENR
 		LDR r0,=0x40023830 ; address of AH1BENR
 		LDR r1,[r0] ;read : r1 = whats at/in address at r0
@@ -63,15 +70,30 @@ KeypadSettle	SUBS r10,r10,#1
 		CMP r8,#4 ;; check if all table values have been parsed;;
 		BLO PatternCheck ;;continue through table if not;;
 		
-		B CounterReset ;; if counter > 4, reset counter and keep looping
-		
-KeyFound B KeyFound
+		B CounterReset ;; if counter = 4, reset counter and keep looping
 
+
+
+	;;DECIPHERING LOGIC
+KeyFound	MOV r4,#0
+SearchingTable	LDRB r5,[r1,r4]
+	CMP r5,r3
+	BEQ ColumnFound
+	ADD r4,r4,#1
+	CMP r4,#4
+	BLO SearchingTable
+	B CounterReset
+	
+ColumnFound B ColumnFound
 	ENDP
 
 	AREA DATA1, DATA, READONLY
 RowPatterns DCB 0xE,0xD,0xB,0x7 ; determining row key is on via 0 bit
-
+	AREA CurrentVariables,DATA, READWRITE
+PinBuffer SPACE 4 ;holds pin digits typed so far
+DigitCount SPACE 1 ; how many digits are in PinBuffer
+AttemptCount SPACE 1;
+LockState SPACE 1;	
 
 	END
 	

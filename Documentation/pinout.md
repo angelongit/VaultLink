@@ -52,4 +52,18 @@ Continuity checks: key `1` connects pins 1–5, key `2` connects pins 1–6, key
 | 2026-11-16 | `RowPatterns` in memory | `0E 0D 0B 07` ✅ |
 | 2026-11-16 | Scan loop, no key (simulator, IDR = `0xF0`) | Reaches `B CounterReset` with r8 = 4, never `KeyFound` ✅ |
 | 2026-11-16 | Scan loop, column 3 low (simulator, IDR = `0xB0`) | Stops at `KeyFound`, r8 = 0, r3 = `0xB` ✅ |
-| pending | Scan loop on board, hold `6` | Expect `KeyFound`, r8 = 1, r3 = `0xB` |
+| 2026-11-17 | Scan loop on board, first run | Every key read one column off: the column wires were on PC5–PC8. Moved to PC4–PC7 ❌→✅ |
+| 2026-11-17 | Scan loop on board, after rewiring | `1` → r8 0, r3 `0xE` · `6` → 1, `0xB` · `8` → 2, `0xD` · `#` → 3, `0xB` · `D` → 3, `0x7` ✅ |
+| 2026-11-17 | RAM clear (Memory window) | `PinBuffer` at `0x20000004`; its 4 bytes and `DigitCount` read `00` after the clear ✅ |
+| 2026-11-17 | Column search on board, breakpoint at `ColumnFound` | r4 = column, r5 = r3 every time (table below) ✅ |
+| 2026-11-17 | Hold `1` and `2` together (same row) | No match; returns to `CounterReset`, `ColumnFound` never reached ✅ |
+
+**Column search results** (board, 2026-11-17):
+
+| Key | r8 (row) | r3 / r5 | r4 (column) | Screenshot |
+|---|---|---|---|---|
+| `1` | 0 | `0xE` | 0 | [KeyFound_Holding1](KeyFound_Holding1.png) |
+| `6` | 1 | `0xB` | 2 | [KeyFound_Holding6](KeyFound_Holding6.png) |
+| `8` | 2 | `0xD` | 1 | [KeyFound_Holding8](KeyFound_Holding8.png) |
+| `#` | 3 | `0xB` | 2 | [KeyFound_HoldingHash](KeyFound_HoldingHash.png) |
+| `D` | 3 | `0x7` | 3 | [KeyFound_HoldingD](KeyFound_HoldingD.png) |

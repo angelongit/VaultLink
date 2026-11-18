@@ -28,6 +28,10 @@ one **Superseded by #N**. Never delete an entry.
 | 18 | PIN entry: fixed 4 digits, auto-submit | Accepted |
 | 19 | Attempt counter resets on a correct PIN | Accepted |
 | 20 | Lockout exit condition | **Open** |
+| 21 | Runtime variables in a `READWRITE` RAM area, cleared at startup | Accepted |
+| 22 | PIN digits stored as ASCII; `*` clears entry | Accepted |
+| 23 | Column decode by searching the `RowPatterns` table | Accepted |
+| 24 | Multi-key presses rejected by the column search | Accepted |
 
 ---
 
@@ -358,3 +362,80 @@ guess immediately triggers another lockout.
 
 Related open items: what the 30 s "warning delay" after each wrong guess means compared with the
 lockout; whether the unlocked state should also re-lock automatically if nobody presses `*`.
+
+---
+
+## #21: Runtime variables in a `READWRITE` RAM area, cleared at startup
+
+- **Date:** 2026-11-17 · **Status:** Accepted
+
+**Context.** The scan loop reuses r7 and r9 on every pass, so typed digits can't be kept in
+registers. They need a fixed home in memory.
+
+**Decision.** An `AREA CurrentVariables, DATA, READWRITE` placed after `ENDP`, holding
+`PinBuffer` (4 bytes), `DigitCount`, `AttemptCount` and `LockState` (1 byte each). `__main`
+clears `PinBuffer` (one `STR`) and `DigitCount` (`STRB`) before anything else runs.
+
+**Reasons.**
+- Values that change at run time must be in SRAM (0x2000_0000 region): it is writable with `STR`
+  but loses its contents on power-off. Constants such as `RowPatterns` stay in flash
+  (0x0800_0000 region): it keeps its contents but can't be written by a normal `STR`.
+- Our own `__main` replaces the C library startup, so nothing zeroes RAM for us. Without the clear,
+  RAM can power up holding anything, or still hold the last PIN after a jump back to `__main`.
+
+**Consequences.**
+- `AREA` is a switch, not a container: putting the data area at the top made every instruction
+  after it land in the data area (error A1186E). Data areas go after `ENDP`, before `END`.
+- Verified on the board: `PinBuffer` sits at `0x20000004`. The first RAM word belongs to a variable
+  from the CubeMX HAL files, so code must always use the label, never a hard-coded address.
+- `AttemptCount` and `LockState` are declared but not cleared yet. They must be cleared before
+  the lockout logic reads them.
+
+---
+
+## #22: PIN digits stored as ASCII; `*` clears entry
+
+- **Date:** 2026-11-17 · **Status:** Accepted
+
+**Decision.** Each accepted key is stored in `PinBuffer` at position `DigitCount` as its ASCII
+character (`'1'` = `0x31`). `*` clears the entry (`DigitCount` = 0). `#` and `A`–`D` are ignored
+while a PIN is being typed.
+
+**Reasons.** The same byte can go straight to the LCD and, later, over Wi-Fi, without converting.
+`*` as clear answers the typo question left open in #18.
+
+---
+
+## #23: Column decode by searching the `RowPatterns` table
+
+- **Date:** 2026-11-17 · **Status:** Accepted
+
+**Context.** At `KeyFound`, r8 holds the row and r3 holds the column pattern (`0xE`, `0xD`,
+`0xB` or `0x7`). The pattern has to become a column number 0–3.
+
+**Decision.** Reuse the `RowPatterns` table: r4 counts 0–3, `LDRB r5,[r1,r4]` loads each entry,
+and the loop stops when r5 equals r3. r4 is then the column. Adds r4 (search counter) and r5
+(table entry) to the register map in #10.
+
+**Reasons.** A column pattern has the same "one bit low" shape as a row pattern, so one table
+serves both. The loop has the same shape as the row scan (counter, `LDRB`, compare, `ADD`,
+`CMP #4`, `BLO`).
+
+**Bugs caught while writing it.** `LDR` instead of `LDRB` (#9 again), and a `BLO` with no
+`CMP r4,#4` before it, which made it read the flags from `CMP r5,r3`. A branch only reads the
+flags left by the last flag-setting instruction.
+
+**Next.** Key number = row × 4 + column (0–15), then a character table indexed by that number.
+
+---
+
+## #24: Multi-key presses rejected by the column search
+
+- **Date:** 2026-11-17 · **Status:** Accepted
+
+**Decision.** If the column search tries all 4 entries with no match, the press is ignored and
+the code goes back to `CounterReset`.
+
+**Reasons.** Two keys in the same row pull two column bits low (`1` and `2` together give
+`1100`), which matches no single-zero table entry. The rejection costs no extra code.
+
