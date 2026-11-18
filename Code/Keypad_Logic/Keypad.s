@@ -14,6 +14,10 @@ __main 	PROC
 		STR r1,[r0]
 		LDR r0, =DigitCount
 		STRB r1,[r0]
+		LDR r0, =AttemptCount
+		STRB r1,[r0]
+		LDR r0,=LockState
+		STRB r1,[r0]
 		
 		;setting up AHB1ENR
 		LDR r0,=0x40023830 ; address of AH1BENR
@@ -24,14 +28,14 @@ __main 	PROC
 		;setting up I/O
 		LDR r0,=0x40020800
 		LDR r1,[r0]
-		LDR r2,=0x0000FFFF ; cant use this as a constant, loading it into a register due to length
-		BIC r1,r1,r2 ;; clearing LOWER 16 bits of register. BIC clears PC0-7
+		LDR r7,=0x0000FFFF ; cant use this as a constant, loading it into a register due to length
+		BIC r1,r1,r7 ;; clearing LOWER 16 bits of register. BIC clears PC0-7
 		ORR r1,r1,#0x55 ;; SETTING PC0-3 as output, leaving PC4-7 as input
 		STR r1,[r0] ;; storing in address 
 
 		;setting up PUPDR
 		LDR r1,[r0,#0x0C] ; address offset for PUPDR
-		BIC r1,r1,r2 ;clear lower 16 bits ,same as I/O set up. Reusing value already in r2
+		BIC r1,r1,r7 ;clear lower 16 bits ,same as I/O set up. Reusing value already in r7
 		ORR r1,r1,#0x5500 ;setting PC4-7 to pull-up
 		STR r1,[r0,#0x0C] ;write back to PUPDR
 		
@@ -42,7 +46,9 @@ __main 	PROC
 		;;KeyFound: r3 will hold column pattern, r8 will hold row. This is decoded in the following section;
 		;;No key pressed? loop back to patterncheck, if all rows checked branch to CounterReset and start loop over;;
 		LDR r1,=RowPatterns ; loading table address into r1
-		LDR r11,=KeyValues
+		LDR r2,=DigitCount ;;[r2 = address of DigitCount]
+		LDR r6,=PinBuffer ;;[r6 = address of PinBuffer]
+		LDR r11,=KeyValues ;; loads address of keyvalues into r11
 CounterReset
 		MOV r8,#0 ;counter register	
 PatternCheck	
@@ -77,9 +83,9 @@ KeypadSettle	SUBS r10,r10,#1
 	;;Finding Column / Key ; 
 KeyFound	MOV r4,#0
 SearchingTable	LDRB r5,[r1,r4]
-	CMP r5,r3
+	CMP r5,r3 ; [r5 = currentpattern being evaluated, r3 = column pattern]
 	BEQ ColumnFound
-	ADD r4,r4,#1
+	ADD r4,r4,#1 ; [r4 = increment counter] 
 	CMP r4,#4
 	BLO SearchingTable
 	B CounterReset
@@ -87,25 +93,49 @@ SearchingTable	LDRB r5,[r1,r4]
 
 	;; Finding actual key ;;
 ColumnFound
-	ADD r7,r4,r8,LSL#2
-	LDRB r9,[r11,r7]
+	ADD r7,r4,r8,LSL#2 ; this part determined position we are in by shifting performing column + row*4. See notes for derivation. [r8 = counter for row number (0-3]
+	LDRB r9,[r11,r7] ; [r9 = character ASCII, r11 = key values address]
 
-
+	;;wait until key is released, if held do not input until release;
 ReleaseWait
-		LDR r7,[r0,#0x10] ;; read GPIOC IDR 
-		AND r3,r7,#0xF0 ;; clearing everything except bits 4-7
+		LDR r7,[r0,#0x10] ;; read GPIOC IDR [r0 = base address, r7 = scratch register]
+		AND r3,r7,#0xF0 ;; clearing everything except bits 4-7 [r3 = column bits]
 		LSR r3, r3, #4 ;; this line shifts the IDR bits 4-7 to 0-3 to simplify comparison with key pattern (0xE0 vs 0xE)
 		
 		;; comparison ;; 
 		CMP r3,#0xF ;; "still holding?"
 		BNE ReleaseWait
-		LDR r10,=80000
+		LDR r10,=80000 ; [r10 = countdown delay]
 		;;loop
 BounceDelay
 		SUBS r10,r10,#1
 		BNE BounceDelay
 		
-wait B wait
+	;;accounting for edgecases;;
+Filter
+	CMP r9,#0x2A;;if r9 holds '*', go to clear routine
+	BEQ ClearPass
+	CMP r9,#0x30 ;;"Is character lower than 0? invalid"
+	BLO CounterReset
+	CMP r9,#0x39 ;;"Is character highter than 9? invalid"
+	BHI CounterReset
+	;; storing pressed keys in pinbuffer RAM;;
+StoreDigit
+	LDRB r12,[r2] ;;[r12 = digits stored so far]	
+	STRB r9,[r6,r12];;storing ASCII value into PinBuffer with an offset of current byte
+	ADD r12,r12,#1;; increment at r12, accounting for next bite
+	STRB r12,[r2] ;; save new count back to RAM
+	CMP r12,#4
+	BEQ PinReady
+	B CounterReset
+	
+ClearPass
+	MOV r12,#0 ;loading 0 in r12 for clearing purposes
+	STRB r12,[r2] ;clearing DigitCount to 0
+	STR r12,[r6] ;; clearing pin itself
+	B CounterReset ;restart search
+	
+PinReady B PinReady
 
 	ENDP
 		

@@ -34,6 +34,11 @@ one **Superseded by #N**. Never delete an entry.
 | 24 | Multi-key presses rejected by the column search | Accepted |
 | 25 | Key number = row × 4 + column, then a 16-byte ASCII lookup table | Accepted |
 | 26 | Wait for key release, then a 15 ms bounce delay | Accepted |
+| 27 | Accept digits only: `*` first, then a two-compare range check | Accepted |
+| 28 | Stop entry at 4 digits (prevents a buffer overflow) | Accepted |
+| 29 | `*` wipes `PinBuffer` as well as resetting `DigitCount` | Accepted |
+| 30 | Clear every RAM variable at startup | Accepted |
+| 31 | One job per reserved register (mask moved from r2 to r7) | Accepted |
 
 ---
 
@@ -494,4 +499,90 @@ contacts bounce for roughly 5–20 ms when they open or close.
 so it would have re-entered the scan), and putting the label on the `LDR` so the count reloaded
 every pass and never reached 0. A leftover `KeyReady B KeyReady` placeholder also blocked the
 path to `ReleaseWait`.
+
+---
+
+## #27: Accept digits only: `*` first, then a two-compare range check
+
+- **Date:** 2026-11-18 · **Status:** Accepted
+
+**Decision.** After the bounce delay, a `Filter` block runs before anything is stored:
+1. `CMP r9,#0x2A` (`*`) → `BEQ ClearPass`
+2. `CMP r9,#0x30` → `BLO CounterReset` (below `'0'`)
+3. `CMP r9,#0x39` → `BHI CounterReset` (above `'9'`)
+4. Otherwise fall through into `StoreDigit`.
+
+**Reasons.**
+- Digits `'0'`–`'9'` are consecutive in ASCII (`0x30`–`0x39`), so "is it a digit?" takes two
+  compares instead of checking `#`, `A`, `B`, `C`, `D` one by one.
+- `*` (`0x2A`) is below `'0'`, so it must be checked first or the range check would discard it.
+- `BHI` (strictly higher), not `BHS`: `BHS` would also reject `'9'` itself.
+
+**Bugs caught while writing it.** The checks were first placed after the store, so `#` was saved
+before being rejected. A valid digit then fell through into `ClearPass` and wiped the count, and a
+`BEQ` immediately followed by `BNE` made `StoreDigit` unreachable. Rule: every block ends in a
+branch except one that is meant to fall through.
+
+---
+
+## #28: Stop entry at 4 digits (prevents a buffer overflow)
+
+- **Date:** 2026-11-18 · **Status:** Accepted
+
+**Context.** `StoreDigit` writes to `PinBuffer + DigitCount`. Without a limit, the 5th digit
+landed in `DigitCount`, the 6th in `AttemptCount`, the 7th in `LockState`. Nothing in hardware
+stops a write past the end of an array.
+
+**Decision.** After saving the count: `CMP r12,#4` → `BEQ PinReady`, otherwise `B CounterReset`.
+
+**Reasons.** Implements the auto-submit from #18 and keeps extra key presses from overwriting the
+attempt counter or the lock state, which would be a security bug once lockout exists.
+
+**Follow-up.** `PinReady` must wipe `PinBuffer` and reset `DigitCount` after the PIN check, right
+or wrong, or the next attempt starts at 4.
+
+---
+
+## #29: `*` wipes `PinBuffer` as well as resetting `DigitCount`
+
+- **Date:** 2026-11-18 · **Status:** Accepted
+
+**Options.** (1) Reset only `DigitCount`: functionally enough, since stale bytes are overwritten
+before the next check. (2) Also zero the buffer.
+
+**Decision.** Option 2: `MOV r12,#0`, `STRB r12,[r2]`, `STR r12,[r6]`.
+
+**Reasons.** A half-typed PIN shouldn't stay readable in RAM. One word store clears all 4 bytes, and
+it is safe because `PinBuffer` is exactly 4 bytes and word-aligned. The same word store is not used
+for the 1-byte variables, because it would write bytes the code doesn't own.
+
+---
+
+## #30: Clear every RAM variable at startup
+
+- **Date:** 2026-11-18 · **Status:** Accepted
+
+**Context.** On the board, `AttemptCount` and `LockState` read `40 08` after reset: leftover values.
+The lockout logic would have started believing there had been 64 failed attempts.
+
+**Decision.** `__main` clears `PinBuffer` (one `STR`) and `DigitCount`, `AttemptCount`, `LockState`
+(one `STRB` each). Supersedes the open item in #21.
+
+**Reasons.** Separate `STRB`s write only the bytes this program owns. A single word store at
+`DigitCount` would also hit the next byte, which belongs to whatever the linker places there.
+
+---
+
+## #31: One job per reserved register (mask moved from r2 to r7)
+
+- **Date:** 2026-11-18 · **Status:** Accepted
+
+**Context.** r2 held the `0x0000FFFF` mask during GPIO setup and was then reassigned to the
+`DigitCount` address. That only worked because setup happened to come first.
+
+**Decision.** The mask now uses scratch register r7. Reserved registers (r0, r1, r2, r6, r11) are set
+once and hold one value for the whole program. See the register map in `pinout.md`.
+
+**Note.** With r2, r6 and r11 reserved, no register is fully free. The PIN check and lockout will
+need subroutines and the stack (lectures 11–12).
 

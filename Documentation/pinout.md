@@ -78,3 +78,43 @@ Continuity checks: key `1` connects pins 1–5, key `2` connects pins 1–6, key
 
 **Release wait and bounce delay** (board, 2026-11-17): breakpoint on `wait`. Holding `6` (also for
 several seconds) never reaches it; releasing reaches it right away ✅
+
+**PIN entry** (board, 2026-11-18). Memory window at `PinBuffer` (`0x20000004`), which shows
+`PinBuffer[0..3]`, then `DigitCount`, `AttemptCount`, `LockState`:
+
+| Step | Keys | Memory | Result | Screenshot |
+|---|---|---|---|---|
+| 0 | (startup) | `.. .. .. .. | .. | 00 | 00` | `AttemptCount`/`LockState` were `40 08` (garbage) before the clear was added ✅ | [0](PinEntry_0_AllRamCleared.png) |
+| 1 | `1` | `31 00 00 00 | 01` | stored at position 0 ✅ | [1](PinEntry_1_Press1.png) |
+| 2 | `2` | `31 32 00 00 | 02` | ✅ | [2](PinEntry_2_Press2.png) |
+| 3 | `*` | `00 00 00 00 | 00` | buffer wiped, count reset ✅ | [3](PinEntry_3_StarClears.png) |
+| 4 | `3` | `33 00 00 00 | 01` | starts again at position 0 ✅ | [4](PinEntry_4_Press3AfterClear.png) |
+| 5 | `4` | `33 34 00 00 | 02` | ✅ | [5](PinEntry_5_Press4.png) |
+| 6 | `5` | `33 34 35 00 | 03` | ✅ | [6](PinEntry_6_Press5.png) |
+| 7 | `6` | `33 34 35 36 | 04` | stops at `PinReady` ✅ | [7](PinEntry_7_Press6_PinReady.png) |
+| 8 | `A` | unchanged | ignored ✅ | [8](PinEntry_8_IgnoreA.png) |
+| 9 | `#` | unchanged | ignored ✅ | [9](PinEntry_9_IgnoreHash.png) |
+
+**Buffer overflow found and fixed** (board, 2026-11-18): before the 4-digit check, presses 5, 6, 7 …
+wrote past `PinBuffer` into `DigitCount`, `AttemptCount`, `LockState` and beyond ❌. With
+`CMP r12,#4` / `BEQ PinReady` the 4th digit stops entry and nothing past `PinBuffer` changes ✅
+
+## Register map (2026-11-18)
+
+| Reg | Role | Type | Notes |
+|---|---|---|---|
+| r0 | GPIOC base `0x40020800` | Reserved | Temporary RAM/RCC addresses during setup |
+| r1 | `RowPatterns` address | Reserved | Holds 0 during the RAM clear |
+| r2 | `DigitCount` address | Reserved | |
+| r3 | Column bits from IDR | Scratch | Pattern the column search matches |
+| r4 | Column search counter → column 0–3 | Working | |
+| r5 | Current `RowPatterns` entry in the search | Scratch | |
+| r6 | `PinBuffer` address | Reserved | |
+| r7 | Scratch | Scratch | `0xFFFF` mask at setup, ODR/IDR copies, key number 0–15 |
+| r8 | Row 0–3 | Working | Row-loop counter |
+| r9 | Row pattern (scan) → ASCII character (after decode) | Working | Stored before rescanning |
+| r10 | Delay counter | Scratch | 1000 (settle), 80,000 (bounce) |
+| r11 | `KeyValues` address | Reserved | |
+| r12 | `DigitCount` value / zero for clearing | Scratch | Reloaded from RAM on every use |
+| r13–r15 | SP, LR, PC | Do not use | |
+
