@@ -4,7 +4,8 @@
 
 ESET 349 (Microcontroller Architecture) final project, Texas A&M University, Fall 2026.
 
-> **Status: in progress.** The keypad hardware interface is set up and verified on the board.
+> **Status: in progress.** The keypad is fully read on the board: every key press is scanned,
+> decoded to its ASCII character, and debounced.
 > See [Progress](#progress) for what works today and what is still to come.
 
 ---
@@ -28,8 +29,10 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 |---|---|
 | Keypad wiring mapped and verified | ✅ Done |
 | GPIOC configured for the keypad (clock, modes, pull-ups) | ✅ Verified on hardware |
-| Row scan loop | ✅ Verified in simulator (board test pending) |
-| Key decoding and debounce | ⬜ Next |
+| Row scan loop | ✅ Verified on hardware |
+| Key decoding (row and column → key number → ASCII character) | ✅ Verified on hardware |
+| Debounce (wait for release, then a 15 ms bounce delay) | ✅ Verified on hardware |
+| PIN entry buffer (store digits in RAM, `*` clears) | ⬜ Next |
 | 16×2 LCD output | ⬜ Planned |
 | Lock logic (PINs, lockout, re-lock) | ⬜ Planned |
 | Servo latch, buzzer, status LEDs | ⬜ Planned |
