@@ -7,6 +7,9 @@
 __main 	PROC		
 	
 	
+
+		
+		
 	
 		;;clearing RAM;;
 		LDR r0, =PinBuffer
@@ -17,6 +20,8 @@ __main 	PROC
 		LDR r0, =AttemptCount
 		STRB r1,[r0]
 		LDR r0,=LockState
+		STRB r1,[r0]
+		LDR r0,=ActiveRole
 		STRB r1,[r0]
 		
 		;setting up AHB1ENR
@@ -38,6 +43,23 @@ __main 	PROC
 		BIC r1,r1,r7 ;clear lower 16 bits ,same as I/O set up. Reusing value already in r7
 		ORR r1,r1,#0x5500 ;setting PC4-7 to pull-up
 		STR r1,[r0,#0x0C] ;write back to PUPDR
+		
+		;; this loop copies default users from flash to a live user table in RAM ;
+		LDR r4,=DefaultPins
+		LDR r8,=DefaultRoles
+		LDR r9,=UserPins
+		LDR r10,=UserRoles
+		MOV r3,#0
+CopyLoop
+		LDR r5,[r4,r3,LSL#2] ;;LOAD DEFAULT USERS INTO R5
+		STR r5,[r9,r3,LSL#2] ;;COPY DEFAULT USERS INTO RAM AT R9
+		
+		LDR r5,[r8,r3,LSL#2] ;;LOAD DEFAULT ROLES INTO R5
+		STR r5,[r10,r3,LSL#2] ;; COPY DEFAULT ROLES INTO RAM AT R10
+		
+		ADD r3,r3,#1 ;;loop until all four users are added
+		CMP r3,#4
+		BLO CopyLoop
 		
 		;; WATCHING FOR INPUT ;; 
 		;loop input logic; see notes for register mapping;
@@ -135,20 +157,62 @@ ClearPass
 	STR r12,[r6] ;; clearing pin itself
 	B CounterReset ;restart search
 	
-PinReady B PinReady
+PinReady 
+	LDR r3,[r6] ;;loading live pin at r3 for comparison later
+	LDR r7,=UserPins ;;storing address of live pins in scratch;
+	LDR r10,=UserRoles ;;storing address of live roles in scratch;
+	MOV r12,#0
+	
+;;this loop sorts four times to check if the pin entered matches any of the actual pins
+ConfirmationLoop
+	LDR r4,[r7,r12,LSL#2]
+	CMP r4, r3
+	BEQ Match
+	ADD r12,r12,#1
+	CMP r12,#4
+	BLO ConfirmationLoop
+	
+NoMatch
+	LDR r7,=AttemptCount
+	LDRB r12,[r7]
+	ADD r12,r12,#1
+	STRB r12,[r7]
+	;; if count reaches 3 -> lockout ;; 
+	B ClearPass
 
+Match
+	LDR r3,[r10,r12,LSL#2]
+	LDR r7,=ActiveRole
+	STRB r3,[r7]
+	LDR r7,=AttemptCount
+	MOV r12,#0
+	STRB r12,[r7]
+	LDR r7,=LockState
+	MOV r12,#1
+	STRB r12,[r7]
+	B ClearPass
+
+	
 	ENDP
 		
 
 
-	AREA DATA1, DATA, READONLY
+	AREA Keypad, DATA, READONLY
 RowPatterns DCB 0xE,0xD,0xB,0x7 ; determining row key is on via 0 bit
 KeyValues DCB "1","2","3","A","4","5","6","B","7","8","9","C","*","0","#","D"
-	AREA CurrentVariables,DATA, READWRITE
+	ALIGN
+DefaultPins DCB "6827","1234","5678"
+	DCD 0
+DefaultRoles DCD 0x1,0x0,0x0,0x0
+
+	AREA CurrentVariables, DATA, READWRITE
 PinBuffer SPACE 4 ;holds pin digits typed so far
 DigitCount SPACE 1 ; how many digits are in PinBuffer
 AttemptCount SPACE 1;
 LockState SPACE 1;	
-
+ActiveRole SPACE 1;
+	ALIGN
+UserPins SPACE 16
+UserRoles SPACE 16
 	END
 	

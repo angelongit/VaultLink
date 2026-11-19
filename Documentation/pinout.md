@@ -99,7 +99,23 @@ several seconds) never reaches it; releasing reaches it right away ✅
 wrote past `PinBuffer` into `DigitCount`, `AttemptCount`, `LockState` and beyond ❌. With
 `CMP r12,#4` / `BEQ PinReady` the 4th digit stops entry and nothing past `PinBuffer` changes ✅
 
-## Register map (2026-11-18)
+**User table and PIN check** (board, 2026-11-19). Memory window from `PinBuffer` (`0x20000004`):
+`PinBuffer[0..3]`, `DigitCount`, `AttemptCount`, `LockState`, `ActiveRole`.
+
+| Test | Result | Screenshot |
+|---|---|---|
+| Copy defaults to RAM | `UserPins` = `"6827" "1234" "5678" 00000000`, `UserRoles` = `01 00 00 00` then zeros ✅ | [UserTable_CopiedToRAM](UserTable_CopiedToRAM.png) |
+| User PIN `1234` | stops at `Match`; `LockState` = 01, `ActiveRole` = 00 ✅ | [PinCheck_User](PinCheck_User.png) |
+| Owner PIN `6827` | `LockState` = 01, `ActiveRole` = 01 (survives the `LockState` write) ✅ | [PinCheck_Owner](PinCheck_Owner.png) |
+| Wrong PIN `9999` | r3 = `0x39393939`, r12 = 4 (all slots tried, empty slot never matches), stops at `NoMatch`, nothing unlocked ✅ | [PinCheck_Wrong](PinCheck_Wrong.png) |
+| 3 wrong, owner, 1 wrong (video) | `AttemptCount` 01 → 02 → 03 → 00 (reset on success) → 01 ✅ | [AttemptCount_Sequence](AttemptCount_Sequence.png) |
+
+Known gap: after unlocking, the keypad still accepts PINs (a wrong PIN counts while the box stays
+unlocked). Fixed by implementing decision #36.
+
+## Register map (2026-11-19)
+
+Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
 
 | Reg | Role | Type | Notes |
 |---|---|---|---|
@@ -117,4 +133,14 @@ wrote past `PinBuffer` into `DigitCount`, `AttemptCount`, `LockState` and beyond
 | r11 | `KeyValues` address | Reserved | |
 | r12 | `DigitCount` value / zero for clearing | Scratch | Reloaded from RAM on every use |
 | r13–r15 | SP, LR, PC | Do not use | |
+
+**PIN check (`PinReady` → `Match` / `NoMatch`), reloaded on every entry:** r3 typed PIN, then the
+matched role · r4 stored PIN · r7 `UserPins` address, then RAM variable addresses · r10 `UserRoles`
+address · r12 slot counter, then values to store.
+
+**Copy loop (setup):** r3 counter · r4 `DefaultPins` · r8 `DefaultRoles` · r9 `UserPins` ·
+r10 `UserRoles` · r5 word being copied.
+
+**RAM:** `PinBuffer` `…04–07`, `DigitCount` `…08`, `AttemptCount` `…09`, `LockState` `…0A`,
+`ActiveRole` `…0B`, `UserPins` `…0C–1B`, `UserRoles` `…1C–2B` (all `0x2000xxxx`; use the labels).
 

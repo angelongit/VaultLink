@@ -27,7 +27,7 @@ one **Superseded by #N**. Never delete an entry.
 | 17 | Test scan logic in the Keil simulator with mapped peripherals | Accepted |
 | 18 | PIN entry: fixed 4 digits, auto-submit | Accepted |
 | 19 | Attempt counter resets on a correct PIN | Accepted |
-| 20 | Lockout exit condition | **Open** |
+| 20 | Lockout exit condition | Resolved by #37 |
 | 21 | Runtime variables in a `READWRITE` RAM area, cleared at startup | Accepted |
 | 22 | PIN digits stored as ASCII; `*` clears entry | Accepted |
 | 23 | Column decode by searching the `RowPatterns` table | Accepted |
@@ -39,6 +39,13 @@ one **Superseded by #N**. Never delete an entry.
 | 29 | `*` wipes `PinBuffer` as well as resetting `DigitCount` | Accepted |
 | 30 | Clear every RAM variable at startup | Accepted |
 | 31 | One job per reserved register (mask moved from r2 to r7) | Accepted |
+| 32 | Owner and user roles (TA suggestion) | Accepted |
+| 33 | User table: parallel PIN and role tables, defaults in flash, live copy in RAM | Accepted |
+| 34 | Compare a whole PIN as one word; PIN word 0 marks an empty slot | Accepted |
+| 35 | `ActiveRole` variable; `LockState` says whether it is meaningful | Accepted |
+| 36 | Keypad behavior by state; lock with lid closed + `#`; auto re-lock | Accepted |
+| 37 | Lockout: only the owner PIN clears it, with a delay per attempt | Accepted |
+| 38 | Fail-secure latch; RTC timestamps are a stretch goal | Accepted |
 
 ---
 
@@ -354,7 +361,7 @@ guess immediately triggers another lockout.
 
 ## #20: Lockout exit condition
 
-- **Date:** 2026-11-16 · **Status:** **Open**
+- **Date:** 2026-11-16 · **Status:** Resolved by #37
 
 **Context.** Three different exits have been written down so far:
 1. Flowchart: a correct password returns to Locked.
@@ -585,4 +592,143 @@ once and hold one value for the whole program. See the register map in `pinout.m
 
 **Note.** With r2, r6 and r11 reserved, no register is fully free. The PIN check and lockout will
 need subroutines and the stack (lectures 11–12).
+
+---
+
+## #32: Owner and user roles (TA suggestion)
+
+- **Date:** 2026-11-19 · **Status:** Accepted
+
+**Context.** The TA asked for separate access levels: only the owner can add or remove users, view
+the access log and unlock remotely.
+
+**Decision.** Each user has a role: `1` = owner, `0` = user. Slot 0 is the owner by default, but the
+role is stored per user rather than implied by position.
+
+**Reasons.**
+- Each record states its own permission, so reordering the table can't promote anyone, and more
+  than one owner is possible.
+- `0` = user means cleared or blank memory falls to the least privilege, never owner.
+
+---
+
+## #33: User table: parallel PIN and role tables, defaults in flash, live copy in RAM
+
+- **Date:** 2026-11-19 · **Status:** Accepted
+
+**Options.**
+- (A) Interleaved records: PIN word + role word per user (8-byte stride, `LSL #3`).
+- (B) Two parallel tables, `Pins[n]` and `Roles[n]`, one word each (4-byte stride, `LSL #2`).
+
+**Decision.** (B). Flash holds `DefaultPins` (`"6827"`, `"1234"`, `"5678"`, `DCD 0`) and
+`DefaultRoles` (`1, 0, 0, 0`). At startup a 4-pass loop copies both into `UserPins` and
+`UserRoles` in RAM (16 bytes each), one slot per pass.
+
+**Reasons.**
+- (B) is simpler to declare and uses the same `LSL #2` indexing as the rest of the code.
+  (A) would also need padding: a 1-byte role makes 5-byte records and breaks word alignment.
+- The owner must be able to add and remove users, so the live table has to be writable, which means
+  RAM. Flash keeps the defaults.
+- The copy loop addresses each table by its own label instead of copying one 32-byte block, so it
+  does not depend on the two tables sitting next to each other.
+- `ALIGN` before `DefaultPins` and before `UserPins`, because they follow byte-sized data.
+
+**Consequences.** Users added at run time are lost when power drops: the box returns to the defaults.
+Acceptable for the demo; persisting them would need flash programming.
+
+---
+
+## #34: Compare a whole PIN as one word; PIN word 0 marks an empty slot
+
+- **Date:** 2026-11-19 · **Status:** Accepted
+
+**Decision.** `LDR r3,[r6]` loads all 4 typed digits as one word; `ConfirmationLoop` loads
+`UserPins[slot]` with `LDR r4,[r7,r12,LSL #2]` and compares once per slot. A PIN word of
+`0x00000000` means an empty slot.
+
+**Reasons.**
+- Possible only because #18 fixes a PIN at exactly 4 ASCII bytes, which is one 32-bit word.
+- Little-endian: `"6827"` is `36 38 32 37` in memory and `0x37323836` in a register. Both the typed
+  and the stored PIN are loaded the same way, so the byte order cancels out.
+- A typed digit is always `0x30`–`0x39`, so a typed PIN word can never be 0. An empty slot can
+  therefore never match, with no extra check in the loop.
+
+**Bugs caught while writing it.** The loop first fell through into `Match` when nothing matched, so
+a wrong PIN would have unlocked the box; `NoMatch` now sits directly after the loop.
+
+---
+
+## #35: `ActiveRole` variable; `LockState` says whether it is meaningful
+
+- **Date:** 2026-11-19 · **Status:** Accepted
+
+**Context.** The matched role was in a register, and the scan overwrites registers immediately.
+
+**Options.** Reuse `LockState` with 0/1/2 (locked / user / owner), or add a variable.
+
+**Decision.** New `ActiveRole SPACE 1`, cleared at startup. `Match` stores the role there and sets
+`LockState` = 1. `ActiveRole` is only meaningful while `LockState` = 1.
+
+**Reasons.** One variable, one meaning. Keeping the table's `0` = user encoding means a cleared
+`ActiveRole` is the least privilege, and "nobody" is expressed by `LockState`, not by a role value.
+
+**Bug caught.** `STR` (4 bytes) to `LockState` also overwrote `ActiveRole`, erasing the owner role
+right after it was saved. Byte variables use `STRB`.
+
+---
+
+## #36: Keypad behavior by state; lock with lid closed + `#`; auto re-lock
+
+- **Date:** 2026-11-19 · **Status:** Accepted (not implemented yet)
+
+**Decision.**
+
+| State | Keys that act |
+|---|---|
+| Locked | digits and `*` (PIN entry) |
+| Unlocked, user | `#` only |
+| Unlocked, owner | `#`, `A` (change a PIN), later `B`/`C`/`D` (add, remove, log) |
+| Lockout | digits and `*`; see #37 |
+
+- Locking needs the lid closed **and** `#`. `#` with the lid open is ignored.
+- Auto re-lock after a delay with the lid closed and no key, so the box can't stay unlocked because
+  someone forgot `#`.
+
+**Reasons.**
+- The owner menu runs on the keypad, so it must keep working while the box is unlocked, with the lid
+  closed.
+- Locking an open lid would drive the bolt into air while the box looks locked.
+
+---
+
+## #37: Lockout: only the owner PIN clears it, with a delay per attempt
+
+- **Date:** 2026-11-19 · **Status:** Accepted (not implemented yet). Resolves #20.
+
+**Decision.** After 3 wrong PINs the box enters lockout. Only a PIN whose role is owner clears it;
+a user PIN is refused. Every attempt during lockout waits (about 30 s). Later, the ESP-01 alerts the
+owner when a lockout starts.
+
+**Reasons.**
+- Like a managed device: after repeated failures, only an administrator restores access.
+- Without a delay, lockout would remove the brute-force protection: an attacker could try all 10,000
+  owner PINs with no penalty.
+
+**Accepted trade-off.** Anyone can lock legitimate users out until the owner arrives (denial of
+service). Acceptable for a personal box with the owner nearby; the Wi-Fi alert makes it practical.
+
+---
+
+## #38: Fail-secure latch; RTC timestamps are a stretch goal
+
+- **Date:** 2026-11-19 · **Status:** Accepted
+
+**Decision.**
+- **Fail-secure:** with no power the box stays locked. The latch must rest locked mechanically
+  (spring or gravity bolt), with the servo only pulling it open, because an SG90 does not hold its
+  position unpowered. The backup is a mechanical key override.
+- **Access log** uses sequence numbers for now. Real date and time from the STM32 RTC is a stretch
+  goal: it needs a 32.768 kHz crystal (or the less accurate internal clock), a way to set the time,
+  and it loses the time on power loss without a backup battery.
+- Loss of Wi-Fi is already covered: the lock works fully without it.
 
