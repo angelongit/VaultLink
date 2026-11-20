@@ -133,15 +133,25 @@ BounceDelay
 		SUBS r10,r10,#1
 		BNE BounceDelay
 		
+
 	;;accounting for edgecases;;
 Filter
+	LDR r3,=LockState
+	LDRB r3,[r3]
+	CMP r3,#0
+	BNE UnlockedKeys
+	
+LockedKeys
 	CMP r9,#0x2A;;if r9 holds '*', go to clear routine
 	BEQ ClearPass
 	CMP r9,#0x30 ;;"Is character lower than 0? invalid"
 	BLO CounterReset
 	CMP r9,#0x39 ;;"Is character highter than 9? invalid"
 	BHI CounterReset
-	;; storing pressed keys in pinbuffer RAM;;
+	
+	B StoreDigit
+	
+	
 StoreDigit
 	LDRB r12,[r2] ;;[r12 = digits stored so far]	
 	STRB r9,[r6,r12];;storing ASCII value into PinBuffer with an offset of current byte
@@ -157,6 +167,30 @@ ClearPass
 	STR r12,[r6] ;; clearing pin itself
 	B CounterReset ;restart search
 	
+UnlockedKeys
+	CMP r9,#0x23;;# check for lock;
+	BEQ LockBox
+	CMP r9,#0x42;;Bcheck for admin
+	BEQ ActiveRoleCheck
+	B CounterReset
+	
+;; this block locks the box if '#' is pressed
+LockBox
+	LDR r3,=LockState
+	MOV r5,#0
+	STRB r5,[r3] ;;insert 0 into LockState, forcing the box to lock [0 = Locked, 1 = Unlocked]
+	;;todo: only lock if lid closed;;
+	
+	B CounterReset
+
+;; this press checks users privilige if 'A' is pressed. [0 = User, 1 = Admin]
+ActiveRoleCheck
+	LDR r3,=ActiveRole
+	LDRB r3,[r3]
+	CMP r3,#1
+	BNE CounterReset
+OwnerMenu B OwnerMenu
+
 PinReady 
 	LDR r3,[r6] ;;loading live pin at r3 for comparison later
 	LDR r7,=UserPins ;;storing address of live pins in scratch;

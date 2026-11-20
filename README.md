@@ -35,7 +35,8 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | Debounce (wait for release, then a 15 ms bounce delay) | ✅ Verified on hardware |
 | PIN entry (4 digits in RAM, `*` clears, other keys ignored, overflow-safe) | ✅ Verified on hardware |
 | User table (owner/user roles) and PIN check, attempt counter | ✅ Verified on hardware |
-| Lock states: keypad by state, `#` to lock, lockout | ⬜ Next |
+| Lock states: keys by state, `#` to lock, owner-only menu key | ✅ Verified on hardware |
+| Lockout after 3 wrong PINs (owner PIN clears it) | ⬜ Next |
 | 16×2 LCD output | ⬜ Planned |
 | Lock logic (PINs, lockout, re-lock) | ⬜ Planned |
 | Servo latch, buzzer, status LEDs | ⬜ Planned |

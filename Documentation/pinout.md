@@ -110,8 +110,17 @@ wrote past `PinBuffer` into `DigitCount`, `AttemptCount`, `LockState` and beyond
 | Wrong PIN `9999` | r3 = `0x39393939`, r12 = 4 (all slots tried, empty slot never matches), stops at `NoMatch`, nothing unlocked ✅ | [PinCheck_Wrong](PinCheck_Wrong.png) |
 | 3 wrong, owner, 1 wrong (video) | `AttemptCount` 01 → 02 → 03 → 00 (reset on success) → 01 ✅ | [AttemptCount_Sequence](AttemptCount_Sequence.png) |
 
-Known gap: after unlocking, the keypad still accepts PINs (a wrong PIN counts while the box stays
-unlocked). Fixed by implementing decision #36.
+Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#39).
+
+**Lock states** (board, 2026-11-20). Memory from `0x20000004`; `LockState` is byte `…0A`,
+`ActiveRole` byte `…0B`.
+
+| Test | Result | Evidence |
+|---|---|---|
+| User `1234`, then keys while unlocked, then `#` | unlocks (01/00); `DigitCount` stays 00 while unlocked; `#` → `LockState` 00 ✅ | video |
+| Owner `6827`, then `B` (breakpoint on `OwnerMenu`) | halts at `0x08000376` = `OwnerMenu`, r9 = `0x42`, r3 = 1 ✅ | [OwnerB_StopsAtOwnerMenu](OwnerB_StopsAtOwnerMenu.png) |
+| User `1234`, then `B`, then `#` | never halts at `OwnerMenu`; `#` still locks, so the CPU kept scanning ✅ | [LockStates_Sequence](LockStates_Sequence.png) |
+| `A` key (breakpoint on `Filter`) | never reaches `Filter`; `B` does, with row 1, col 3, key 7, `0x42`. Dead `A` contact ❌ → owner key moved to `B` (#40) | [KeyA_Dead_KeyB_ReachesFilter](KeyA_Dead_KeyB_ReachesFilter.png) |
 
 ## Register map (2026-11-19)
 

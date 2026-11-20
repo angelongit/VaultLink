@@ -43,9 +43,12 @@ one **Superseded by #N**. Never delete an entry.
 | 33 | User table: parallel PIN and role tables, defaults in flash, live copy in RAM | Accepted |
 | 34 | Compare a whole PIN as one word; PIN word 0 marks an empty slot | Accepted |
 | 35 | `ActiveRole` variable; `LockState` says whether it is meaningful | Accepted |
-| 36 | Keypad behavior by state; lock with lid closed + `#`; auto re-lock | Accepted |
+| 36 | Keypad behavior by state; lock with lid closed + `#`; auto re-lock | Accepted (partly implemented, see #39) |
 | 37 | Lockout: only the owner PIN clears it, with a delay per attempt | Accepted |
 | 38 | Fail-secure latch; RTC timestamps are a stretch goal | Accepted |
+| 39 | Implement state logic: one `LockState` check after debounce, separate locked/unlocked blocks | Accepted |
+| 40 | Owner menu key moved from `A` to `B` (dead `A` contact) | Accepted |
+| 41 | Keep the 16×2 HD44780 LCD; SSD1306 I2C OLED is a stretch goal | Accepted |
 
 ---
 
@@ -679,7 +682,7 @@ right after it was saved. Byte variables use `STRB`.
 
 ## #36: Keypad behavior by state; lock with lid closed + `#`; auto re-lock
 
-- **Date:** 2026-11-19 · **Status:** Accepted (not implemented yet)
+- **Date:** 2026-11-19 · **Status:** Accepted (state logic and `#` implemented 2026-11-20, see #39; lid check and auto re-lock pending)
 
 **Decision.**
 
@@ -731,4 +734,71 @@ service). Acceptable for a personal box with the owner nearby; the Wi-Fi alert m
   goal: it needs a 32.768 kHz crystal (or the less accurate internal clock), a way to set the time,
   and it loses the time on power loss without a backup battery.
 - Loss of Wi-Fi is already covered: the lock works fully without it.
+
+---
+
+## #39: Implement state logic: one `LockState` check after debounce, separate locked/unlocked blocks
+
+- **Date:** 2026-11-20 · **Status:** Accepted
+
+**Decision.** `Filter` loads `LockState` once (`LDR r3,=LockState`, `LDRB r3,[r3]`). Locked (0) falls
+through into `LockedKeys`, which is the unchanged PIN path; otherwise `BNE UnlockedKeys`.
+`UnlockedKeys`: `#` → `LockBox` (`LockState` = 0, `STRB`), `B` → `ActiveRoleCheck` (load
+`ActiveRole`; not 1 → `CounterReset`; 1 → `OwnerMenu` placeholder), anything else → `CounterReset`.
+
+**Reasons.**
+- The check sits after `ReleaseWait` and `BounceDelay`, so every key is debounced in every state:
+  one press = one action. Without it, a held menu key would act hundreds of times.
+- The two paths are separate blocks chosen once. An earlier draft interleaved them, which stored
+  `#` as a PIN digit while locked and stored digits while unlocked.
+- `UnlockedKeys`, `LockBox` and `ActiveRoleCheck` sit after blocks that end in a branch, and each
+  ends in its own branch, so nothing falls into `PinReady`.
+
+**Bugs caught while writing it.**
+- `BEQ` instead of `BNE` sent the locked state to the unlocked keys.
+- A code label named `ActiveRole` clashed with the RAM variable.
+- `LDRB rX,=Label` and a load where a store was meant. Rule: `=Label` is always `LDR` (an address);
+  `LDRB`/`STRB` go through brackets.
+- An empty block fell into `PinReady`.
+- A stale build: comments were added without rebuilding, so the breakpoint sat on the old line
+  numbers.
+
+**Pending.** `#` locks unconditionally until the reed switch is wired (`;;todo: only lock if lid
+closed`). The comment above `ActiveRoleCheck` still mentions `A`.
+
+---
+
+## #40: Owner menu key moved from `A` to `B` (dead `A` contact)
+
+- **Date:** 2026-11-20 · **Status:** Accepted
+
+**Context.** With a breakpoint on `Filter`, pressing `A` never stopped the CPU: the scan never saw
+it. Pressing `B` stopped with r8 = 1, r4 = 3, r7 = 7, r9 = `0x42`, all correct. `A` shares column 3
+with `B` and `D` and row 0 with `1`, and all of those work, so the fault is the single `A` contact
+in the keypad membrane, not the wiring or the code.
+
+**Decision.** `UnlockedKeys` compares with `0x42` (`B`). The owner menu will use `B`, then `C`/`D`.
+
+**Follow-up.** Confirm with a continuity test: ribbon pins 1 and 8 while pressing `A`.
+
+---
+
+## #41: Keep the 16×2 HD44780 LCD; SSD1306 I2C OLED is a stretch goal
+
+- **Date:** 2026-11-19 · **Status:** Accepted
+
+**Context.** A 0.96" 128×64 SSD1306 I2C OLED became available.
+
+**Decision.** Keep the HD44780 16×2 from Lab 6.
+
+**Reasons.**
+- The course teaches the parallel HD44780 (Lab 6); the syllabus parts list says not to buy an LCD
+  with an I2C module. I2C is not covered.
+- The OLED needs an I2C driver (clock, AF4 pins, timing registers, start/address/ACK/stop polling)
+  and has no character generator, so every character needs a bitmap font in flash. The HD44780
+  takes the ASCII bytes the keypad code already produces (#22).
+- About 10 days remain.
+
+**Trade-off.** The OLED would free most of GPIOB and look sharper, and an I2C driver in assembly
+would be strong portfolio work. Revisit after the demo.
 
