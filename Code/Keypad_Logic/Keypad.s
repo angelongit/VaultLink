@@ -138,8 +138,8 @@ BounceDelay
 Filter
 	LDR r3,=LockState
 	LDRB r3,[r3]
-	CMP r3,#0
-	BNE UnlockedKeys
+	CMP r3,#1
+	BEQ UnlockedKeys
 	
 LockedKeys
 	CMP r9,#0x2A;;if r9 holds '*', go to clear routine
@@ -183,7 +183,7 @@ LockBox
 	
 	B CounterReset
 
-;; this press checks users privilige if 'A' is pressed. [0 = User, 1 = Admin]
+;; this press checks users privilige if 'B'is pressed[0= User, 1 =Admin]
 ActiveRoleCheck
 	LDR r3,=ActiveRole
 	LDRB r3,[r3]
@@ -206,26 +206,54 @@ ConfirmationLoop
 	CMP r12,#4
 	BLO ConfirmationLoop
 	
-NoMatch
+NoMatch ;;if pins dont match, come here to increment attempt # and check if lockout is prompted;;
 	LDR r7,=AttemptCount
 	LDRB r12,[r7]
 	ADD r12,r12,#1
 	STRB r12,[r7]
-	;; if count reaches 3 -> lockout ;; 
+	CMP r12,#3
+	BHS LockOut
 	B ClearPass
-
-Match
-	LDR r3,[r10,r12,LSL#2]
-	LDR r7,=ActiveRole
-	STRB r3,[r7]
-	LDR r7,=AttemptCount
-	MOV r12,#0
+LockOut
+	LDR r7,=LockState
+	MOV r12,#2
 	STRB r12,[r7]
+	B LockoutDelay
+
+Match ;;CHECKING IF PASSWORDS MATCH TO EITHER MOVE TO UNLOCK OR LOCKOUT
+	LDR r3,[r10,r12,LSL#2]
+	
+	LDR r7,=LockState
+	LDRB r4,[r7]
+	CMP r4,#2 ;THIS CHECKS IF LOCKSTATE IS IN #2, [LOCKOUT = 2]
+	BNE NormalUnlock
+	
+	CMP r3,#1
+	BNE LockoutDelay
+
+
+	
+NormalUnlock ;; standard unlock procedure ;;
+	LDR r7,=ActiveRole
+	STRB r3,[r7] ;;check users role ;;
+	LDR r7,=AttemptCount 
+	MOV r12,#0 
+	STRB r12,[r7] ;;clear attempt count;;
 	LDR r7,=LockState
 	MOV r12,#1
-	STRB r12,[r7]
+	STRB r12,[r7] ;; [UNLOCKED STATE = 1]
 	B ClearPass
-
+	
+LockoutDelay
+	MOV r12,#0 ;loading 0 in r12 for clearing purposes
+	STRB r12,[r2] ;clearing DigitCount to 0
+	STR r12,[r6] ;; clearing pin itself
+	LDR r10,=120000000 ;; 30s delay
+	;; to do: add LCD 'LOCKED OUT' ;
+LDelay	;delay loop
+	SUBS r10,r10,#1
+	BNE LDelay
+	B ClearPass
 	
 	ENDP
 		

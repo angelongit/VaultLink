@@ -36,8 +36,8 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | PIN entry (4 digits in RAM, `*` clears, other keys ignored, overflow-safe) | ✅ Verified on hardware |
 | User table (owner/user roles) and PIN check, attempt counter | ✅ Verified on hardware |
 | Lock states: keys by state, `#` to lock, owner-only menu key | ✅ Verified on hardware |
-| Lockout after 3 wrong PINs (owner PIN clears it) | ⬜ Next |
-| 16×2 LCD output | ⬜ Planned |
+| Lockout after 3 wrong PINs (owner PIN clears it, 30 s delay per failed attempt) | ✅ Verified on hardware |
+| 16×2 LCD output (prompts, `*` per digit, lockout message) | ⬜ Next |
 | Lock logic (PINs, lockout, re-lock) | ⬜ Planned |
 | Servo latch, buzzer, status LEDs | ⬜ Planned |
 | Lid sensor and tamper alarm | ⬜ Planned |

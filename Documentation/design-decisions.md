@@ -33,7 +33,7 @@ one **Superseded by #N**. Never delete an entry.
 | 23 | Column decode by searching the `RowPatterns` table | Accepted |
 | 24 | Multi-key presses rejected by the column search | Accepted |
 | 25 | Key number = row × 4 + column, then a 16-byte ASCII lookup table | Accepted |
-| 26 | Wait for key release, then a 15 ms bounce delay | Accepted |
+| 26 | Wait for key release, then a 15 ms bounce delay | Accepted (delay measured as 20 ms, see #43) |
 | 27 | Accept digits only: `*` first, then a two-compare range check | Accepted |
 | 28 | Stop entry at 4 digits (prevents a buffer overflow) | Accepted |
 | 29 | `*` wipes `PinBuffer` as well as resetting `DigitCount` | Accepted |
@@ -44,11 +44,13 @@ one **Superseded by #N**. Never delete an entry.
 | 34 | Compare a whole PIN as one word; PIN word 0 marks an empty slot | Accepted |
 | 35 | `ActiveRole` variable; `LockState` says whether it is meaningful | Accepted |
 | 36 | Keypad behavior by state; lock with lid closed + `#`; auto re-lock | Accepted (partly implemented, see #39) |
-| 37 | Lockout: only the owner PIN clears it, with a delay per attempt | Accepted |
+| 37 | Lockout: only the owner PIN clears it, with a delay per attempt | Accepted (implemented, see #42) |
 | 38 | Fail-secure latch; RTC timestamps are a stretch goal | Accepted |
 | 39 | Implement state logic: one `LockState` check after debounce, separate locked/unlocked blocks | Accepted |
 | 40 | Owner menu key moved from `A` to `B` (dead `A` contact) | Accepted |
 | 41 | Keep the 16×2 HD44780 LCD; SSD1306 I2C OLED is a stretch goal | Accepted |
+| 42 | Lockout implementation: `LockState` = 2, delay only after a failed attempt | Accepted |
+| 43 | Delay timing measured on hardware: 4 cycles per countdown pass | Accepted |
 
 ---
 
@@ -706,7 +708,7 @@ right after it was saved. Byte variables use `STRB`.
 
 ## #37: Lockout: only the owner PIN clears it, with a delay per attempt
 
-- **Date:** 2026-11-19 · **Status:** Accepted (not implemented yet). Resolves #20.
+- **Date:** 2026-11-19 · **Status:** Accepted, implemented 2026-11-20 (see #42). Resolves #20.
 
 **Decision.** After 3 wrong PINs the box enters lockout. Only a PIN whose role is owner clears it;
 a user PIN is refused. Every attempt during lockout waits (about 30 s). Later, the ESP-01 alerts the
@@ -801,4 +803,62 @@ in the keypad membrane, not the wiring or the code.
 
 **Trade-off.** The OLED would free most of GPIOB and look sharper, and an I2C driver in assembly
 would be strong portfolio work. Revisit after the demo.
+
+---
+
+## #42: Lockout implementation: `LockState` = 2, delay only after a failed attempt
+
+- **Date:** 2026-11-20 · **Status:** Accepted
+
+**Encoding.** `LockState` describes the box's mode: 0 = locked, 1 = unlocked, 2 = lockout. The three
+are mutually exclusive, so one variable keeps one meaning.
+
+**Decision.**
+- `Filter`: `CMP r3,#1` / `BEQ UnlockedKeys`. Locked (0) and lockout (2) both use `LockedKeys`:
+  people can still type in lockout; whether a PIN opens the box is decided later.
+- `NoMatch`: after saving the count, `CMP r12,#3` / `BHS LockOut` → `LockState` = 2.
+  `BHS` (not `BEQ`) so every further wrong PIN keeps the box in lockout.
+- `Match`: load the role first, then if `LockState` = 2 and the role is not owner → refused
+  (`LockoutDelay`), not counted. Owner in lockout falls into `NormalUnlock`, the same code as a normal
+  unlock: role saved, `AttemptCount` = 0, `LockState` = 1.
+- `LockoutDelay`: wipe `PinBuffer` and `DigitCount` first, then wait 30 s, then back to scanning.
+  Reached from `LockOut` and from a refused user PIN.
+
+**Reasons.**
+- The delay goes after a failed attempt, not before the check: an attacker still gets one guess per
+  30 s, but the owner's correct PIN opens immediately (like a phone's lockout delay).
+- Wiping before the wait keeps the typed PIN out of RAM during the 30 s (same idea as #29).
+- `ActiveRole` is saved only when the box actually opens, so a refused user is never recorded.
+
+**Bugs caught while writing it.** Comparing `ActiveRole` with 2 (it is only 0 or 1); reusing
+`ActiveRoleCheck`, which skipped the buffer wipe; overwriting r10 (the `UserRoles` address) with the
+`LockState` value before the role load; a leftover role check under `NormalUnlock` that refused every
+user; and a missing exit after the countdown, which would have run the data area as code.
+
+**Edge case.** `AttemptCount` is one byte and wraps after 255 failures. Harmless: only an owner
+`Match` sets `LockState` back from 2.
+
+**Pending.** LCD message "LOCKED OUT" during the wait (blocking loop for now; SysTick later).
+
+---
+
+## #43: Delay timing measured on hardware: 4 cycles per countdown pass
+
+- **Date:** 2026-11-20 · **Status:** Accepted
+
+**Context.** All delays were computed as 3 cycles per `SUBS` + `BNE` pass (187.5 ns at 16 MHz).
+A 160,000,000-count lockout delay measured **40 s** on the board, not 30 s.
+
+**Finding.** 40 s / 160,000,000 = 250 ns = **4 cycles** per pass. A taken branch on the Cortex-M4
+refills the pipeline, costing more than the 2 cycles assumed.
+
+**Decision.** Use 250 ns per count. Lockout: 30 s / 250 ns = **120,000,000** (`LDR r10,=120000000`),
+measured at about 30 s.
+
+**Consequences for earlier delays** (still fine for their purpose):
+- Settle delay, 1000 counts: 250 µs (not 187.5 µs).
+- Bounce delay, 80,000 counts: **20 ms** (not 15 ms), still within the 5–20 ms bounce range (#26).
+
+**Lesson.** A cycle count from the datasheet is an estimate; a stopwatch on the real board is the
+measurement. SysTick (a hardware timer) will replace counted loops for anything that must be exact.
 

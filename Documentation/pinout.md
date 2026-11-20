@@ -122,6 +122,15 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | User `1234`, then `B`, then `#` | never halts at `OwnerMenu`; `#` still locks, so the CPU kept scanning ✅ | [LockStates_Sequence](LockStates_Sequence.png) |
 | `A` key (breakpoint on `Filter`) | never reaches `Filter`; `B` does, with row 1, col 3, key 7, `0x42`. Dead `A` contact ❌ → owner key moved to `B` (#40) | [KeyA_Dead_KeyB_ReachesFilter](KeyA_Dead_KeyB_ReachesFilter.png) |
 
+**Lockout** (board, 2026-11-20). Memory from `0x20000004`: `PinBuffer`, `DigitCount`,
+`AttemptCount`, `LockState`, `ActiveRole`.
+
+| Test | Result | Evidence |
+|---|---|---|
+| User unlock, `#`, 3 wrong PINs, user PIN in lockout, owner PIN in lockout | `AttemptCount` 01 → 02 → 03 with `LockState` 02; user refused (still 02, not counted); owner → `LockState` 01, `AttemptCount` 00 ✅ | [Lockout_StateSequence](Lockout_StateSequence.png) |
+| Delay with 160,000,000 counts | waits measured at **40 s** (0:15.5 → 0:55.5, 1:03.5 → 1:43.5, 1:48 → 2:28); owner opens with no wait ✅ → recalibrated (#43) | [Lockout_40s_BeforeCalibration](Lockout_40s_BeforeCalibration.png) |
+| Delay with 120,000,000 counts, wipe before wait | buffer reads `00 00 00 00` immediately after the 3rd wrong PIN; keypad responds again after about 30 s; owner unlocks ✅ | [Lockout_30s_Calibrated](Lockout_30s_Calibrated.png) |
+
 ## Register map (2026-11-19)
 
 Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
@@ -138,7 +147,7 @@ Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
 | r7 | Scratch | Scratch | `0xFFFF` mask at setup, ODR/IDR copies, key number 0–15 |
 | r8 | Row 0–3 | Working | Row-loop counter |
 | r9 | Row pattern (scan) → ASCII character (after decode) | Working | Stored before rescanning |
-| r10 | Delay counter | Scratch | 1000 (settle), 80,000 (bounce) |
+| r10 | Delay counter | Scratch | 1000 (settle, 250 µs), 80,000 (bounce, 20 ms), 120,000,000 (lockout, 30 s) |
 | r11 | `KeyValues` address | Reserved | |
 | r12 | `DigitCount` value / zero for clearing | Scratch | Reloaded from RAM on every use |
 | r13–r15 | SP, LR, PC | Do not use | |
