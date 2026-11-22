@@ -32,14 +32,14 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | GPIOC configured for the keypad (clock, modes, pull-ups) | ✅ Verified on hardware |
 | Row scan loop | ✅ Verified on hardware |
 | Key decoding (row and column → key number → ASCII character) | ✅ Verified on hardware |
-| Debounce (wait for release, then a 15 ms bounce delay) | ✅ Verified on hardware |
+| Debounce (wait for release, then a 20 ms bounce delay) | ✅ Verified on hardware |
 | PIN entry (4 digits in RAM, `*` clears, other keys ignored, overflow-safe) | ✅ Verified on hardware |
 | User table (owner/user roles) and PIN check, attempt counter | ✅ Verified on hardware |
 | Lock states: keys by state, `#` to lock, owner-only menu key | ✅ Verified on hardware |
 | Lockout after 3 wrong PINs (owner PIN clears it, 30 s delay per failed attempt) | ✅ Verified on hardware |
 | 16×2 LCD: own driver as subroutines, `*` per digit, screen follows lock state | ✅ Verified on hardware |
 | Servo latch (TIM3 PWM on PA6) | ⬜ Next |
-| Lock logic (PINs, lockout, re-lock) | ⬜ Planned |
+| Auto re-lock (after a delay; `#` only with the lid closed) | ⬜ Planned |
 | Buzzer, status LEDs | ⬜ Planned |
 | Lid sensor and tamper alarm | ⬜ Planned |
 | Admin menu and access log | ⬜ Planned |
