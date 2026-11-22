@@ -269,7 +269,7 @@ LockoutDelay
 	STRB r12,[r2] ;clearing DigitCount to 0
 	STR r12,[r6] ;; clearing pin itself
 	LDR r10,=120000000 ;; 30s delay
-	;; to do: add LCD 'LOCKED OUT' ;
+	
 LDelay	;delay loop
 	SUBS r10,r10,#1
 	BNE LDelay
@@ -394,6 +394,8 @@ ScreenLockout
 	LDR r7,=MessageLockout
 	BL LCDCommand
 	BL LCDString
+	MOV r3,#0x84
+	BL LCDCommand
 	B ScreenDone
 	
 ScreenDone

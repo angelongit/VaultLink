@@ -142,6 +142,7 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | "ENTER PIN:" | "ENTER PI" correct; `N` faint, `:` missing → columns 9–11 dead (#48) | [LCD_DeadColumns_EnterPin](LCD_DeadColumns_EnterPin.jpg), [LCD_DeadColumns_FullContrast](LCD_DeadColumns_FullContrast.jpg) |
 | `LCDString` with `"PIN:",0` | `PIN:` with the cursor in column 5 ✅ | [LCD_PinPrompt](LCD_PinPrompt.jpg) |
 | Stars, `*` reset, wrong PIN, owner unlock, `#`, 3 wrong PINs | a `*` per digit; screen follows `LockState`: `LOCKED` / `OPEN` / `LOCKOUT` (shown at the start of the wait) ✅ | |
+| Lockout cursor (LCDDisplayTest video, 52 s): 3 wrong PINs, wait 30 s, type, owner PIN, `#`, 3 wrong PINs | before the fix the cursor stayed after `LOCKOUT` on row 2; with `0x84` in `ScreenLockout` it sits after `PIN:` and the stars land on row 1 ✅. `LOCKOUT` stays after the 30 s (only the owner PIN ends it, #37) ✅; owner → `OPEN`, `#` → `LOCKED`, 3 more wrong PINs → `LOCKOUT` again (counter was reset) ✅ | [LCD_Screens_Lockout_Open_Locked](LCD_Screens_Lockout_Open_Locked.jpg) |
 
 ## Register map (2026-11-22)
 

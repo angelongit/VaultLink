@@ -12,3 +12,8 @@ EventRecorderStub.scvd
 
 # --- STM32CubeMX / HAL C files (to be removed from the Keil project; assembly only) ---
 STM32CubeMX/
+
+# --- Test videos (large; stills go in Documentation/) ---
+*.mp4
+*.mov
+*.MOV

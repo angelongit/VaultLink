@@ -954,7 +954,8 @@ instead of its own counter. `PUSH`/`POP` save registers, not flags.
 | 1, unlocked | `PIN:` | `OPEN` |
 | 2, lockout | `PIN:` | `LOCKOUT` |
 
-The locked screen ends with command `0x84` so the cursor sits after `PIN:` (row 1, column 5).
+The locked and lockout screens end with command `0x84` so the cursor sits after `PIN:` (row 1,
+column 5), where the stars go. The open screen skips it: no digits are typed while unlocked.
 It is called at power-up, in `ClearPass`, and at the start of `LockoutDelay` (so `LOCKOUT` shows
 during the wait, not after it). `LockBox` ends with `B ClearPass` so `#` updates the screen too.
 
@@ -962,8 +963,10 @@ during the wait, not after it). `LockBox` ends with `B ClearPass` so `#` updates
 changes `LockState` and reaches `ClearPass` gets the right screen. Keeping `LOCKED` on screen for the
 whole locked state replaced a timed "LOCKED" flash after `#`.
 
-**Bug caught.** `LDR r3,[r3]` read 4 bytes (`LockState` and `ActiveRole` together, `0x0101` for an
-owner), so `CMP r3,#1` failed. A byte variable is read with `LDRB`.
+**Bugs caught.** `LDR r3,[r3]` read 4 bytes (`LockState` and `ActiveRole` together, `0x0101` for an
+owner), so `CMP r3,#1` failed. A byte variable is read with `LDRB`. `ScreenLockout` had no `0x84`,
+so after the wait the cursor stayed after `LOCKOUT` on row 2 and stars landed there. A second
+`BL UpdateScreen` after the countdown was removed: `ClearPass` already redraws the screen.
 
 ---
 
