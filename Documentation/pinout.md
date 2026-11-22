@@ -19,6 +19,8 @@
 
 ## GPIOB: LCD and lid sensor
 
+LCD wired 2026-11-22: D0–D7 = PB0–PB7, RS = PB8, E = PB9, RW = GND (PB10 not used).
+
 | Pin | Connected to | Mode | Status |
 |---|---|---|---|
 | PB0–PB7 | LCD D0–D7 | Output | Planned (decision #5, proposed) |
@@ -131,7 +133,17 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | Delay with 160,000,000 counts | waits measured at **40 s** (0:15.5 → 0:55.5, 1:03.5 → 1:43.5, 1:48 → 2:28); owner opens with no wait ✅ → recalibrated (#43) | [Lockout_40s_BeforeCalibration](Lockout_40s_BeforeCalibration.png) |
 | Delay with 120,000,000 counts, wipe before wait | buffer reads `00 00 00 00` immediately after the 3rd wrong PIN; keypad responds again after about 30 s; owner unlocks ✅ | [Lockout_30s_Calibrated](Lockout_30s_Calibrated.png) |
 
-## Register map (2026-11-19)
+**LCD** (board, 2026-11-22)
+
+| Test | Result | Evidence |
+|---|---|---|
+| Power, backlight, contrast (no code) | backlight on, character cells visible after adjusting the pot ✅ | |
+| GPIOB setup | MODER = `0x00055555`; keypad still works ✅ | |
+| "ENTER PIN:" | "ENTER PI" correct; `N` faint, `:` missing → columns 9–11 dead (#48) | [LCD_DeadColumns_EnterPin](LCD_DeadColumns_EnterPin.jpg), [LCD_DeadColumns_FullContrast](LCD_DeadColumns_FullContrast.jpg) |
+| `LCDString` with `"PIN:",0` | `PIN:` with the cursor in column 5 ✅ | [LCD_PinPrompt](LCD_PinPrompt.jpg) |
+| Stars, `*` reset, wrong PIN, owner unlock, `#`, 3 wrong PINs | a `*` per digit; screen follows `LockState`: `LOCKED` / `OPEN` / `LOCKOUT` (shown at the start of the wait) ✅ | |
+
+## Register map (2026-11-22)
 
 Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
 
@@ -151,6 +163,10 @@ Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
 | r11 | `KeyValues` address | Reserved | |
 | r12 | `DigitCount` value / zero for clearing | Scratch | Reloaded from RAM on every use |
 | r13–r15 | SP, LR, PC | Do not use | |
+
+**LCD routines** preserve every register they change. Argument: byte in **r3**
+(`LCDCommand`, `LCDChar`); string address in **r7** (`LCDString`). Inside: r5 = GPIOB base,
+r7 = RS/E value, r10 = `delay` counter.
 
 **PIN check (`PinReady` → `Match` / `NoMatch`), reloaded on every entry:** r3 typed PIN, then the
 matched role · r4 stored PIN · r7 `UserPins` address, then RAM variable addresses · r10 `UserRoles`

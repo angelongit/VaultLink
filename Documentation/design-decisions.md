@@ -12,7 +12,7 @@ one **Superseded by #N**. Never delete an entry.
 | 2 | Buzzer moved from PB10 to PA0 | Accepted |
 | 3 | 4×4 keypad instead of 3×4 | Accepted |
 | 4 | 16×2 LCD for output, 4-digit 7-segment dropped | Accepted |
-| 5 | LCD in 8-bit mode on GPIOB | Proposed |
+| 5 | LCD in 8-bit mode on GPIOB | Accepted (see #44) |
 | 6 | Active-low keypad scan with column pull-ups | Accepted |
 | 7 | Read-modify-write for every peripheral register | Accepted |
 | 8 | Row patterns stored in a lookup table | Accepted |
@@ -51,6 +51,11 @@ one **Superseded by #N**. Never delete an entry.
 | 41 | Keep the 16×2 HD44780 LCD; SSD1306 I2C OLED is a stretch goal | Accepted |
 | 42 | Lockout implementation: `LockState` = 2, delay only after a failed attempt | Accepted |
 | 43 | Delay timing measured on hardware: 4 cycles per countdown pass | Accepted |
+| 44 | LCD pins: D0–D7 on PB0–PB7, RS on PB8, E on PB9, RW tied to GND | Accepted |
+| 45 | Subroutines preserve every register they change; LCD argument in r3, string address in r7 | Accepted |
+| 46 | LCD driver ported from Lab 6 as subroutines | Accepted |
+| 47 | The screen is drawn from `LockState` by one routine (`UpdateScreen`) | Accepted |
+| 48 | Damaged LCD (columns 9–11 dead): keep text in columns 1–8, swap before the demo | Accepted |
 
 ---
 
@@ -861,4 +866,117 @@ measured at about 30 s.
 
 **Lesson.** A cycle count from the datasheet is an estimate; a stopwatch on the real board is the
 measurement. SysTick (a hardware timer) will replace counted loops for anything that must be exact.
+
+---
+
+## #44: LCD pins: D0–D7 on PB0–PB7, RS on PB8, E on PB9, RW tied to GND
+
+- **Date:** 2026-11-22 · **Status:** Accepted. Resolves #5.
+
+**Context.** Lab 6 put the data bus on PC0–PC7 (now the keypad) and RS/RW/EN on PA5–PA7 (PA5 is the
+on-board LED; GPIOA belongs to the LEDs).
+
+**Decision.** Everything on GPIOB. Clock: `ORR #6` in `RCC_AHB1ENR` enables GPIOB and GPIOC together.
+MODER: read-modify-write with mask `0x000FFFFF` and value `0x00055555` (PB0–PB9 outputs), placed
+after the clock enable and before the GPIOC setup so r0 ends up holding GPIOC's base.
+
+**Reasons.**
+- RW tied to GND: the code never reads from the LCD, so the busy flag is not used and fixed delays
+  are enough. Saves a pin.
+- Byte lanes of ODR: `STRB` to offset `0x14` changes only PB0–PB7 (the data byte); `STRB` to `0x15`
+  changes only PB8–PB15 (RS = bit 0, E = bit 1 of that byte). Offsets `0x16`/`0x17` are reserved.
+- PB3/PB4 reset in a debug alternate mode; the read-modify-write turns them into D3/D4 outputs,
+  which is safe because the ST-Link uses only PA13/PA14.
+
+---
+
+## #45: Subroutines preserve every register they change; LCD argument in r3, string address in r7
+
+- **Date:** 2026-11-22 · **Status:** Accepted
+
+**Options.**
+- (A) The callee saves every register it changes.
+- (B) ARM's AAPCS: the callee may change r0–r3 and r12; arguments in r0–r3.
+- (C) The caller saves what it needs.
+
+**Decision.** (A). Each routine starts with `STMDB SP!,{…}` / `PUSH` of the registers it changes,
+plus LR if it calls another routine, and ends with `LDMIA SP!,{…, PC}` (restore and return in one
+instruction). Leaf routines (`delay`) save their counter and return with `BX LR`. The byte to send is
+passed in r3; a string's address in r7.
+
+**Reasons.**
+- r0–r2 are reserved globals here, so AAPCS would allow a routine to wipe them.
+- The routines are called from many places with different live registers; with (A) no call site has
+  to think about it.
+- Cost: a few cycles per call, against LCD waits of 40 µs to 3 ms.
+
+**Trade-off.** Not compatible with C callers, which assume AAPCS. Not an issue for an all-assembly
+project.
+
+**Concepts.** `PUSH`/`POP` are `STMDB SP!`/`LDMIA SP!` (full descending stack: decrement before a
+store, increment after a load). `STMDB` must pair with `LDMIA`; `LDMIB` would restore every register
+shifted by one slot. A routine that calls another must save LR, because `BL` overwrites it.
+
+---
+
+## #46: LCD driver ported from Lab 6 as subroutines
+
+- **Date:** 2026-11-22 · **Status:** Accepted
+
+**Routines.**
+- `LCDCommand` / `LCDChar`: byte in r3 onto PB0–PB7, then RS/E = `0x02` / `0x03`, `BL delay`,
+  RS/E = `0x00` / `0x01`. The LCD latches on the falling edge of E, so the data is set before E
+  rises and RS stays steady while E falls.
+- `delay`: 12,000 counts × 250 ns ≈ 3 ms, longer than the slowest command (clear, 1.52 ms).
+- `LCDInit`: 15 ms power-up wait (5 × `delay`), then `0x38`, `0x0F`, `0x01`, `0x06`.
+- `LCDString`: walks a 0-terminated string with `LDRB r3,[r7],#1` (post-indexed) and calls `LCDChar`.
+- `ResetPrompt`: clear (which also homes the cursor), then print `PIN:`.
+
+**Changed from Lab 6.** Direct `STR` to `RCC_AHB1ENR` and MODER replaced by read-modify-write; R0/R1
+globals replaced by registers loaded inside each routine; every routine saves what it changes.
+
+**Bugs caught while writing it.** `LDMIB` instead of `LDMIA`; restoring into LR without returning;
+E never brought low; a `PUSH` list including PC; `LDR r7,=…` inside `LCDString` (it would always
+print the same string); and the power-up loop's `BNE` reading the flags left by `delay`'s `SUBS`
+instead of its own counter. `PUSH`/`POP` save registers, not flags.
+
+---
+
+## #47: The screen is drawn from `LockState` by one routine (`UpdateScreen`)
+
+- **Date:** 2026-11-22 · **Status:** Accepted
+
+**Decision.** `UpdateScreen` loads `LockState` (byte) and draws one of three screens:
+
+| `LockState` | Row 1 | Row 2 |
+|---|---|---|
+| 0, locked | `PIN:` (a `*` per digit typed, from `StoreDigit`) | `LOCKED` |
+| 1, unlocked | `PIN:` | `OPEN` |
+| 2, lockout | `PIN:` | `LOCKOUT` |
+
+The locked screen ends with command `0x84` so the cursor sits after `PIN:` (row 1, column 5).
+It is called at power-up, in `ClearPass`, and at the start of `LockoutDelay` (so `LOCKOUT` shows
+during the wait, not after it). `LockBox` ends with `B ClearPass` so `#` updates the screen too.
+
+**Reasons.** One source of truth: the screen cannot disagree with the state, and any path that
+changes `LockState` and reaches `ClearPass` gets the right screen. Keeping `LOCKED` on screen for the
+whole locked state replaced a timed "LOCKED" flash after `#`.
+
+**Bug caught.** `LDR r3,[r3]` read 4 bytes (`LockState` and `ActiveRole` together, `0x0101` for an
+owner), so `CMP r3,#1` failed. A byte variable is read with `LDRB`.
+
+---
+
+## #48: Damaged LCD (columns 9–11 dead): keep text in columns 1–8, swap before the demo
+
+- **Date:** 2026-11-22 · **Status:** Accepted
+
+**Context.** "ENTER PIN:" showed only "ENTER PI": the `N` (column 9) was faint and the `:` (column 10)
+missing. At full contrast, every working cell lights up except columns 10–11 on both rows, and
+column 9 is weak. The same cells misbehaved before any code ran. Pressing on the frame did nothing.
+The text that did appear was correct, so the wiring and code are fine: it is a display-module defect
+(glass-to-driver connection or column driver).
+
+**Decision.** All text stays in columns 1–8 (`PIN:****`, `LOCKED`, `OPEN`, `LOCKOUT` all fit).
+Replace the module before the demo; the wiring and code do not change.
 

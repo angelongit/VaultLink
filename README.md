@@ -37,9 +37,10 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | User table (owner/user roles) and PIN check, attempt counter | ✅ Verified on hardware |
 | Lock states: keys by state, `#` to lock, owner-only menu key | ✅ Verified on hardware |
 | Lockout after 3 wrong PINs (owner PIN clears it, 30 s delay per failed attempt) | ✅ Verified on hardware |
-| 16×2 LCD output (prompts, `*` per digit, lockout message) | ⬜ Next |
+| 16×2 LCD: own driver as subroutines, `*` per digit, screen follows lock state | ✅ Verified on hardware |
+| Servo latch (TIM3 PWM on PA6) | ⬜ Next |
 | Lock logic (PINs, lockout, re-lock) | ⬜ Planned |
-| Servo latch, buzzer, status LEDs | ⬜ Planned |
+| Buzzer, status LEDs | ⬜ Planned |
 | Lid sensor and tamper alarm | ⬜ Planned |
 | Admin menu and access log | ⬜ Planned |
 | Wi-Fi alerts and remote unlock (ESP-01) | ⬜ Planned (extra credit) |
@@ -65,7 +66,7 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | | PA1, PA8 | Red / green status LEDs |
 | | PA4, PA9, PA10 | ESP-01 reset, TX, RX (USART1) |
 | | PA6 | Servo signal (TIM3 CH1 PWM) |
-| GPIOB | PB0–PB10 | LCD data D0–D7 and RS, RW, E (planned) |
+| GPIOB | PB0–PB9 | LCD data D0–D7 (PB0–PB7), RS (PB8), E (PB9); RW tied to GND |
 | | PB12 | Lid reed switch (interrupt) |
 | GPIOC | PC0–PC3 | Keypad rows 1–4 |
 | | PC4–PC7 | Keypad columns 1–4 |
