@@ -56,7 +56,9 @@ one **Superseded by #N**. Never delete an entry.
 | 46 | LCD driver ported from Lab 6 as subroutines | Accepted |
 | 47 | The screen is drawn from `LockState` by one routine (`UpdateScreen`) | Accepted |
 | 48 | Damaged LCD (columns 9–11 dead): keep text in columns 1–8 | Accepted (module kept, 2026-11-24) |
-| 49 | Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox` | Accepted (design; not yet built) |
+| 49 | Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox` | Accepted (slices 1–3 built; delete pending) |
+| 50 | Momentary messages through one `ShowMessage` routine; menu screen text | Accepted |
+| 51 | Thumb limits: `BEQ.W` for a far branch, `LTORG` for the literal pool | Accepted |
 
 ---
 
@@ -991,7 +993,7 @@ uses, so it is kept; no replacement was ordered. The 8-column limit stays for al
 
 ## #49: Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox`
 
-- **Date:** 2026-11-25 · **Status:** Accepted (design; not yet built)
+- **Date:** 2026-11-25 · **Status:** Accepted; slices 1–3 built and tested 2026-11-25, delete pending
 
 **Context.** `B` (owner only, unlocked) reaches `OwnerMenu`, which is an empty loop. The owner needs
 to add and delete users and to put the box in an owner-only mode.
@@ -1066,4 +1068,58 @@ flags are destroyed by any flag-setting instruction (the power-up loop already h
 
 **Build order.** (1) `B` opens state 3, menu screen, `#` exits through `SecureBox`. (2) Away mode.
 (3) `FindEmptySlot` and add user. (4) Delete user.
+
+**Built (slices 1–3, 2026-11-25).** Decisions made while coding:
+- `FindPin` (third search routine): input r3 = PIN word, returns r12 = slot 0–3 where found, or 0xFF.
+  Used by `SaveUser` (found = duplicate) and, next, by delete. The PIN is passed in r3 (argument
+  register, #45) instead of read from `PinBuffer` inside, so the routine does not depend on r6.
+- `SaveUser` writes `LockState` = 3 first, so every exit (duplicate, full, saved) returns to the menu
+  with one write. `UserPins[i]` and `UserRoles[i]` are both written with `STR` at
+  `[base, r12, LSL #2]` (a word per slot; `LSL #2` = slot × 4 bytes).
+- `AdminKeys` order: `#` first (exits from every admin screen), then states above 3 go to
+  `LockedKeys` (digits and `*` while typing), then `B` and `C` (menu only). Letters are ignored
+  while typing; digits and `*` are ignored in state 3.
+- `PinReady` checks `LockState` = 4 first, before the PIN is read or `AttemptCount` touched, so a new
+  PIN never counts as a wrong attempt. State 5 will get its own exact match (different block).
+- Screen text: menu `C:+  D:-` / `B:Away` (no title: the 16 working cells show the keys; `#` is not
+  labeled because it means lock everywhere); add screen `PIN:` / `ADD USER`.
+
+---
+
+## #50: Momentary messages through one `ShowMessage` routine
+
+- **Date:** 2026-11-25 · **Status:** Accepted
+
+**Context.** "Table full" was first drawn as an `UpdateScreen` case, which needs a `LockState` value.
+But "full" is not a mode: after the message the box is still in the menu. The fall-through also sent
+state 0 to the new screen, so the locked screen would have read `FULL`.
+
+**Decision.** `ShowMessage`: input r7 = string address (as `LCDString`). Clears, prints, waits about
+1 s (4,000,000 passes of `SUBS`/`BNE` at 4 cycles each, 16 MHz), returns. Saves r3, r7, r12 and LR.
+The caller then branches to `ClearPass`, which redraws the screen of the current state. The caller
+picks the message; the routine never loads one itself.
+
+**Messages (8 columns, #48).** `FULL`, `EXISTS` (duplicate PIN); `REFUSED` and `NO USER` for delete.
+
+**Reasons.** Decision #47 stays true (the screen is drawn from `LockState`); one routine serves four
+messages; the print happens before the wait, so the message is visible during it.
+
+---
+
+## #51: Thumb limits: `BEQ.W` for a far branch, `LTORG` for the literal pool
+
+- **Date:** 2026-11-25 · **Status:** Accepted
+
+**Branch range.** `BEQ AddUser` failed with A1762E: a 16-bit conditional branch reaches about
+±256 bytes, and `AddUser` was 264 bytes away. Fix: `BEQ.W` (32-bit encoding, about ±1 MB). An
+unconditional `B` reaches about ±2 KB in 16 bits.
+
+**Literal pool.** When the code passed about 1 KB, every `LDR rX,=value` near the top failed with
+A1284E. `LDR rX,=value` is a pseudo-instruction: the value goes into a literal pool (by default at the
+end of the code area) and the line becomes a PC-relative load, whose 16-bit form reaches about 1 KB
+forward. Fix: `LTORG` right after `__main`'s `ENDP`, where nothing executes (the line before is an
+unconditional branch), so the pool is in reach of both halves.
+
+**Rule.** Data placed inside a code area must never be reached by execution: only after an
+unconditional branch or between routines.
 

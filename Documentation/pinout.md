@@ -163,6 +163,21 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | Owner PIN in away mode | `… 00 00 01 01`: unlocked, `AttemptCount` 0 ✅ | [AdminMenu_Slice2_AwayMode](AdminMenu_Slice2_AwayMode.png) |
 | `#` from state 1 and from the menu | `LockState` 0 both times (`LockBox` now asks `SecureBox` first) ✅ | [AdminMenu_Slice2_AwayMode](AdminMenu_Slice2_AwayMode.png) |
 
+**Owner menu, slice 3: add user** (board, 2026-11-25). Memory from `0x20000004`; `UserPins` slot 3 at
+`0x20000018`, its role at `0x20000028`.
+
+| Test | Result | Evidence |
+|---|---|---|
+| `C` with room | add screen `PIN:` / `ADD USER`, `LockState` 4 ✅ | |
+| `C` with a full table (temporary 4th default PIN) | `FULL` for about 1 s, stays in the menu (`LockState` 3) ✅ | |
+| Digits, `*`, letters, `#` on the add screen | stars appear; `*` clears; `B`/`C` ignored; `#` locks ✅ | |
+| 4 digits on the add screen (before `SaveUser` was written) | back to the menu, `AttemptCount` 0: never reached the PIN check ✅ | |
+| Add `4321` | slot 3 = `34 33 32 31`, role 0, back to the menu ✅ | [AdminMenu_Slice3_AddUser](AdminMenu_Slice3_AddUser.png) |
+| Lock, then `4321` | `OPEN` with `ActiveRole` 0; `B` does nothing ✅ | [AdminMenu_Slice3_AddUser](AdminMenu_Slice3_AddUser.png) |
+| Add `1234` (already a user) | `EXISTS`, table unchanged ✅ (seen on the LCD; photo to add) | |
+| `C` with slot 3 now used | `FULL` ✅ (seen on the LCD; photo to add) | |
+| Owner after all of the above | slot 0 still `36 38 32 37`, role 1; owner opens the menu ✅ | [AdminMenu_Slice3_AddUser](AdminMenu_Slice3_AddUser.png) |
+
 ## Register map (2026-11-22)
 
 Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).

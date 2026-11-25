@@ -171,10 +171,14 @@ LockedKeys
 AdminKeys
 	CMP r9,#0x23 ;; check if "#" is pressed, relock box and exit menu
 	BEQ LockBox
+	CMP r3,#0x3
+	BHI LockedKeys
 	CMP r9,#0x42 ;; check if "B" is pressed, put box in 'away' mode
-	BEQ AwayMode
+	BEQ.W AwayMode
+	CMP r9,#0x43 ;; check if "C" is precced, setup for adding a password
+	BEQ.W AddUser ;; Target branch out of 16-bit range so .W append forces 32 bit encoding
 	B CounterReset ;;ignore any key that isnt listed in the menu;
-
+	
 	
 StoreDigit
 	LDRB r12,[r2] ;;[r12 = digits stored so far]	
@@ -220,6 +224,10 @@ ActiveRoleCheck
 	B OwnerMenu
 
 PinReady 
+	LDR r3,=LockState
+	LDRB r3,[r3]
+	CMP r3,#4
+	BEQ.W SaveUser
 	LDR r3,[r6] ;;loading live pin at r3 for comparison later
 	LDR r7,=UserPins ;;storing address of live pins in scratch;
 	LDR r10,=UserRoles ;;storing address of live roles in scratch;
@@ -302,8 +310,53 @@ AwayMode
 	LDR r7,=AttemptCount
 	STRB r3,[r7]
 	B ClearPass	
-	ENDP
 
+AddUser
+	BL FindEmptySlot
+	CMP r12,#4
+	BHS AddFull
+	LDR r7,=LockState
+	MOV r12,#4
+	STRB r12,[r7] 
+	B ClearPass
+	
+	
+AddFull
+	LDR r7,=OptionFull
+	BL ShowMessage
+	B ClearPass
+
+SaveUser
+	LDR r3,=LockState
+	MOV r7,#3
+	STRB r7,[r3]
+	LDR r3,[r6]
+	BL FindPin
+	CMP r12,#4
+	BLO PinExists
+	BL FindEmptySlot
+	CMP r12,#4
+	BHS AddFull
+	LDR r10,=UserPins
+	STR r3,[r10,r12,LSL#2]
+	MOV r3,#0
+	LDR r10,=UserRoles
+	STR r3,[r10,r12,LSL#2]	
+	B ClearPass
+	
+	
+	
+PinExists
+	LDR r7,=OptionExists
+	BL ShowMessage
+	B ClearPass
+	
+	
+	
+	
+	
+	ENDP
+	LTORG
 
 
 ;;; FUNCTION AREA;;
@@ -390,7 +443,21 @@ ResetPrompt FUNCTION
 	BL LCDString 
 	LDMIA SP!,{r3,r7,PC}
 	ENDP
+		
+ShowMessage FUNCTION
+	STMDB SP!,{r3,r7,r12,LR}
+	MOV r3,#0x01
+	BL LCDCommand	
+	LDR r12,=4000000
+	BL LCDString
+msgloop	
+	SUBS r12,r12,#1
+	BNE msgloop
 
+
+	LDMIA SP!,{r3,r7,r12,PC}
+	ENDP
+		
 UpdateScreen FUNCTION
 	STMDB SP!,{r3,r7,LR}
 	LDR r3,=LockState ;;address of lockstate
@@ -401,6 +468,8 @@ UpdateScreen FUNCTION
 	BEQ ScreenLockout
 	CMP r3,#3
 	BEQ ScreenAdmin
+	CMP r3,#4
+	BEQ ScreenAdd	
 	
 
 ScreenLocked
@@ -440,7 +509,16 @@ ScreenAdmin
 	LDR r7,=OptionAway
 	BL LCDCommand
 	BL LCDString
-	
+	B ScreenDone
+
+ScreenAdd
+	BL ResetPrompt
+	MOV r3,#0xC0
+	LDR r7,=OptionAdd
+	BL LCDCommand
+	BL LCDString
+	MOV r3,#0x84
+	BL LCDCommand
 	B ScreenDone
 	
 ScreenDone
@@ -452,34 +530,43 @@ SecureBox FUNCTION
 	STMDB SP!,{r3,r7,LR}
 	MOV r5,#0
 	LDMIA SP!,{r3,r7,PC}
-	
-	
+	ENDP
+		
+		
+;; RETURNS R12: slots 0-3 , or 0xFF is table is full
+FindEmptySlot FUNCTION
+	STMDB sp!,{r3,r5,LR}
+	LDR r3,=UserPins ;;userpins base address
+	MOV r12,#0 ;;counter register
+SlotLoop	
+	LDR r5,[r3,r12,LSL#2]
+	CMP r5,#0
+	BEQ SlotDone
+	ADD r12,r12,#1
+	CMP r12,#4
+	BLO SlotLoop
+	MOV r12,#0xFF
+SlotDone
+	LDMIA SP!,{r3,r5,PC}
 	ENDP
 
-		
-
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+;; Input r3 = PIN , returns r12 = slots 0-3 [where it was found], or 0xFF IF NOT IN TABLE
+FindPin FUNCTION
+	STMDB sp!,{r3,r5,r7,LR}
+	LDR r7,=UserPins
+	MOV r12,#0
+PinLoop	
+	LDR r5,[r7,r12,LSL#2]
+	CMP r5,r3
+	BEQ PinFound
+	ADD r12,r12,#1
+	CMP r12,#4
+	BLO PinLoop
+	MOV r12,#0xFF
+PinFound
+	LDMIA sp!,{r3,r5,r7,PC}
+	
+	ENDP
 		
 		
 		
@@ -499,6 +586,9 @@ MessageLocked DCB "LOCKED",0
 MessageLockout DCB "LOCKOUT",0
 OptionAddDel DCB "C:+  D:-",0
 OptionAway DCB "B:Away",0
+OptionFull DCB "FULL",0
+OptionAdd DCB "ADD USER",0
+OptionExists DCB "EXISTS",0
 
 	AREA CurrentVariables, DATA, READWRITE
 PinBuffer SPACE 4 ;holds pin digits typed so far
