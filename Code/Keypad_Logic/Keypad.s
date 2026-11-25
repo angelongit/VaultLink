@@ -171,7 +171,10 @@ LockedKeys
 AdminKeys
 	CMP r9,#0x23 ;; check if "#" is pressed, relock box and exit menu
 	BEQ LockBox
+	CMP r9,#0x42 ;; check if "B" is pressed, put box in 'away' mode
+	BEQ AwayMode
 	B CounterReset ;;ignore any key that isnt listed in the menu;
+
 	
 StoreDigit
 	LDRB r12,[r2] ;;[r12 = digits stored so far]	
@@ -201,12 +204,12 @@ UnlockedKeys
 ;; this block locks the box if '#' is pressed
 LockBox
 	LDR r3,=LockState
+	BL SecureBox
+	CMP r5,#0
+	BNE ClearPass
 	MOV r5,#0
 	STRB r5,[r3] ;;insert 0 into LockState, forcing the box to lock [0 = Locked, 1 = Unlocked]
-	;;todo: only lock if lid closed;;
-	
 	B ClearPass
-
 ;; this press checks users privilige if 'B'is pressed[0= User, 1 =Admin]
 ActiveRoleCheck
 	LDR r3,=ActiveRole
@@ -288,6 +291,17 @@ OwnerMenu
 	STRB r12,[r7] ;; [OWNER MENU STATE = 3]
 	B ClearPass
 	
+AwayMode
+	BL SecureBox 
+	CMP r5,#0
+	BNE ClearPass
+	MOV r3,#2
+	LDR r7,=LockState
+	STRB r3,[r7]
+	MOV r3,#3
+	LDR r7,=AttemptCount
+	STRB r3,[r7]
+	B ClearPass	
 	ENDP
 
 
@@ -432,7 +446,15 @@ ScreenAdmin
 ScreenDone
 	LDMIA SP!,{r3,r7,PC}	
 	ENDP
-		
+
+;; returns r5:0 = locked, r5:1 = lid open
+SecureBox FUNCTION
+	STMDB SP!,{r3,r7,LR}
+	MOV r5,#0
+	LDMIA SP!,{r3,r7,PC}
+	
+	
+	ENDP
 
 		
 

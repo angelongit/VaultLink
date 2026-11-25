@@ -43,7 +43,8 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | Buzzer, status LEDs | ⬜ Planned |
 | Lid sensor and tamper alarm | ⬜ Planned |
 | Owner menu: open with `B`, `#` exits and locks (slice 1 of 4, #49) | ✅ Verified on hardware |
-| Owner menu: away mode, add user, delete user (slices 2–4) | 🟡 In progress |
+| Owner menu: away mode through `SecureBox` (slice 2) | ✅ Verified on hardware |
+| Owner menu: add user, delete user (slices 3–4) | 🟡 In progress |
 | Wi-Fi alerts and remote unlock (ESP-01) | ⬜ Planned (extra credit) |
 
 ## Hardware

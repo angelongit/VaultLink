@@ -154,6 +154,15 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | Digits and `*` in the menu | ignored: no stars, `PinBuffer` and `DigitCount` stay 0 (after adding `B CounterReset` to `AdminKeys`; before it, keys fell into `StoreDigit`) ✅ | |
 | `#` in the menu | `LOCKED`, `LockState` 0 ✅ | |
 
+**Owner menu, slice 2: away mode** (board, 2026-11-25). Same memory view.
+
+| Test | Result | Evidence |
+|---|---|---|
+| Owner, `B` (menu), `B` | `… 00 03 02 01`: `AttemptCount` 3, `LockState` 2 ✅ | [AdminMenu_Slice2_AwayMode](AdminMenu_Slice2_AwayMode.png) |
+| User PIN in away mode | refused, not counted, buffer wiped, about 30 s wait ✅ | |
+| Owner PIN in away mode | `… 00 00 01 01`: unlocked, `AttemptCount` 0 ✅ | [AdminMenu_Slice2_AwayMode](AdminMenu_Slice2_AwayMode.png) |
+| `#` from state 1 and from the menu | `LockState` 0 both times (`LockBox` now asks `SecureBox` first) ✅ | [AdminMenu_Slice2_AwayMode](AdminMenu_Slice2_AwayMode.png) |
+
 ## Register map (2026-11-22)
 
 Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
