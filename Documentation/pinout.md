@@ -23,10 +23,10 @@ LCD wired 2026-11-22: D0–D7 = PB0–PB7, RS = PB8, E = PB9, RW = GND (PB10 not
 
 | Pin | Connected to | Mode | Status |
 |---|---|---|---|
-| PB0–PB7 | LCD D0–D7 | Output | Planned (decision #5, proposed) |
-| PB8 | LCD RS | Output | Planned |
-| PB9 | LCD RW | Output | Planned |
-| PB10 | LCD E | Output | Planned |
+| PB0–PB7 | LCD D0–D7 | Output | Tested (#44) |
+| PB8 | LCD RS | Output | Tested (#44) |
+| PB9 | LCD E | Output | Tested (#44) |
+| — | LCD RW tied to GND (write only) | — | Tested (#44) |
 | PB12 | Lid reed switch (other wire to GND) | Input, pull-up, EXTI12 | Planned |
 
 ## GPIOC: keypad
@@ -143,6 +143,16 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | `LCDString` with `"PIN:",0` | `PIN:` with the cursor in column 5 ✅ | [LCD_PinPrompt](LCD_PinPrompt.jpg) |
 | Stars, `*` reset, wrong PIN, owner unlock, `#`, 3 wrong PINs | a `*` per digit; screen follows `LockState`: `LOCKED` / `OPEN` / `LOCKOUT` (shown at the start of the wait) ✅ | |
 | Lockout cursor (LCDDisplayTest video, 52 s): 3 wrong PINs, wait 30 s, type, owner PIN, `#`, 3 wrong PINs | before the fix the cursor stayed after `LOCKOUT` on row 2; with `0x84` in `ScreenLockout` it sits after `PIN:` and the stars land on row 1 ✅. `LOCKOUT` stays after the 30 s (only the owner PIN ends it, #37) ✅; owner → `OPEN`, `#` → `LOCKED`, 3 more wrong PINs → `LOCKOUT` again (counter was reset) ✅ | [LCD_Screens_Lockout_Open_Locked](LCD_Screens_Lockout_Open_Locked.jpg) |
+
+**Owner menu, slice 1** (board, 2026-11-25). Memory from `0x20000004`: `PinBuffer`, `DigitCount`,
+`AttemptCount`, `LockState`, `ActiveRole`.
+
+| Test | Result | Evidence |
+|---|---|---|
+| Owner PIN, then `B` | screen `C:+  D:-` / `B:Away`; memory `… 00 00 03 01` (`LockState` 3, `ActiveRole` 1) ✅ | [AdminMenu_Slice1_OpenAndExit](AdminMenu_Slice1_OpenAndExit.jpg) |
+| User PIN, then `B` | stays `OPEN`; memory `… 00 00 01 00` (`LockState` 1, `ActiveRole` 0) ✅ | [AdminMenu_Slice1_OpenAndExit](AdminMenu_Slice1_OpenAndExit.jpg) |
+| Digits and `*` in the menu | ignored: no stars, `PinBuffer` and `DigitCount` stay 0 (after adding `B CounterReset` to `AdminKeys`; before it, keys fell into `StoreDigit`) ✅ | |
+| `#` in the menu | `LOCKED`, `LockState` 0 ✅ | |
 
 ## Register map (2026-11-22)
 

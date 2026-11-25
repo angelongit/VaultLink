@@ -156,7 +156,8 @@ Filter
 	LDRB r3,[r3]
 	CMP r3,#1
 	BEQ UnlockedKeys
-	
+	CMP r3,#2
+	BHI AdminKeys
 LockedKeys
 	CMP r9,#0x2A;;if r9 holds '*', go to clear routine
 	BEQ ClearPass
@@ -167,6 +168,10 @@ LockedKeys
 	
 	B StoreDigit
 	
+AdminKeys
+	CMP r9,#0x23 ;; check if "#" is pressed, relock box and exit menu
+	BEQ LockBox
+	B CounterReset ;;ignore any key that isnt listed in the menu;
 	
 StoreDigit
 	LDRB r12,[r2] ;;[r12 = digits stored so far]	
@@ -208,7 +213,8 @@ ActiveRoleCheck
 	LDRB r3,[r3]
 	CMP r3,#1
 	BNE CounterReset
-OwnerMenu B OwnerMenu
+
+	B OwnerMenu
 
 PinReady 
 	LDR r3,[r6] ;;loading live pin at r3 for comparison later
@@ -274,11 +280,22 @@ LDelay	;delay loop
 	SUBS r10,r10,#1
 	BNE LDelay
 	B ClearPass
-	
 
 	
+OwnerMenu
+	LDR r7,=LockState
+	MOV r12,#3
+	STRB r12,[r7] ;; [OWNER MENU STATE = 3]
+	B ClearPass
+	
 	ENDP
-		
+
+
+
+;;; FUNCTION AREA;;
+
+
+
 LCDCommand  FUNCTION ; COMMAND BYTE IN R3, PRESERVES ALL REGISTERS. Handles all the low and high signals for R and E
 	STMDB SP!,{r5,r7,LR} ; saves r5,r7, and treturn address
 	LDR r5,=0x40020400 ;;load GPIOB base in r5
@@ -368,6 +385,8 @@ UpdateScreen FUNCTION
 	BEQ ScreenOpen
 	CMP r3,#2 ;if lockoed out -> print lockout
 	BEQ ScreenLockout
+	CMP r3,#3
+	BEQ ScreenAdmin
 	
 
 ScreenLocked
@@ -398,9 +417,52 @@ ScreenLockout
 	BL LCDCommand
 	B ScreenDone
 	
+ScreenAdmin
+	MOV r3, #0x01
+	BL LCDCommand
+	LDR r7,=OptionAddDel
+	BL LCDString
+	MOV r3,#0xC0
+	LDR r7,=OptionAway
+	BL LCDCommand
+	BL LCDString
+	
+	B ScreenDone
+	
 ScreenDone
-	LDMIA SP!,{r3,r7,PC}
+	LDMIA SP!,{r3,r7,PC}	
 	ENDP
+		
+
+		
+
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
 		
 	AREA Keypad, DATA, READONLY
 RowPatterns DCB 0xE,0xD,0xB,0x7 ; determining row key is on via 0 bit
@@ -413,6 +475,8 @@ MessagePin DCB "PIN:",0
 MessageOpen DCB "OPEN",0
 MessageLocked DCB "LOCKED",0
 MessageLockout DCB "LOCKOUT",0
+OptionAddDel DCB "C:+  D:-",0
+OptionAway DCB "B:Away",0
 
 	AREA CurrentVariables, DATA, READWRITE
 PinBuffer SPACE 4 ;holds pin digits typed so far

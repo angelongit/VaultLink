@@ -52,10 +52,11 @@ one **Superseded by #N**. Never delete an entry.
 | 42 | Lockout implementation: `LockState` = 2, delay only after a failed attempt | Accepted |
 | 43 | Delay timing measured on hardware: 4 cycles per countdown pass | Accepted |
 | 44 | LCD pins: D0–D7 on PB0–PB7, RS on PB8, E on PB9, RW tied to GND | Accepted |
-| 45 | Subroutines preserve every register they change; LCD argument in r3, string address in r7 | Accepted |
+| 45 | Subroutines preserve every register they change; LCD argument in r3, string address in r7 | Accepted (return-value rule added by #49) |
 | 46 | LCD driver ported from Lab 6 as subroutines | Accepted |
 | 47 | The screen is drawn from `LockState` by one routine (`UpdateScreen`) | Accepted |
-| 48 | Damaged LCD (columns 9–11 dead): keep text in columns 1–8, swap before the demo | Accepted |
+| 48 | Damaged LCD (columns 9–11 dead): keep text in columns 1–8 | Accepted (module kept, 2026-11-24) |
+| 49 | Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox` | Accepted (design; not yet built) |
 
 ---
 
@@ -982,4 +983,87 @@ The text that did appear was correct, so the wiring and code are fine: it is a d
 
 **Decision.** All text stays in columns 1–8 (`PIN:****`, `LOCKED`, `OPEN`, `LOCKOUT` all fit).
 Replace the module before the demo; the wiring and code do not change.
+
+**Update 2026-11-24.** After the board was rewired, the module works for every message the project
+uses, so it is kept; no replacement was ordered. The 8-column limit stays for all new screens (#49).
+
+---
+
+## #49: Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox`
+
+- **Date:** 2026-11-25 · **Status:** Accepted (design; not yet built)
+
+**Context.** `B` (owner only, unlocked) reaches `OwnerMenu`, which is an empty loop. The owner needs
+to add and delete users and to put the box in an owner-only mode.
+
+**Decision: states.** `LockState` gains three values. Any value of 3 or more is an admin state, so
+checks use `CMP #3` / `BHS`, never one exact value.
+
+| `LockState` | Meaning | Screen (≤ 8 columns) |
+|---|---|---|
+| 3 | Menu: waiting for a choice | menu choices |
+| 4 | Adding a user: typing the new PIN | add prompt |
+| 5 | Deleting a user: typing the PIN to remove | delete prompt |
+
+**Decision: keys in the menu.** Menu choices are letter keys, so digits always mean PIN digits and a
+key is never ambiguous.
+
+| Key | Action |
+|---|---|
+| `B` (owner, unlocked) | open the menu → state 3 |
+| `C` | add user → state 4 (refused at once if the table is full) |
+| `D` | delete user → state 5 |
+| `B` (in the menu) | away mode |
+| `*` | clear typed digits |
+| `#` | exit the menu **and lock** ("I'm done, secure it"), through `SecureBox` → state 0 |
+
+**Decision: routing.** `Filter` sends states ≥3 to a menu key block. Digits reuse `StoreDigit` and
+`PinBuffer`; after the 4th digit, `PinReady` routes by `LockState`: 4 → save, 5 → delete, otherwise
+the normal PIN check. One decision point, no copy of `StoreDigit`.
+
+**Decision: add user.**
+- `FindEmptySlot` walks `UserPins` like `ConfirmationLoop`, comparing each word with `#0` (an empty
+  slot, #34). It returns the slot index (0–3) in r12, or 0xFF if the table is full. Callers check
+  with `CMP r12,#4` / `BHS` (a range check: a bug that leaves 4 in r12 is still caught, instead of
+  storing a PIN at `UserPins + 16` = `UserRoles[0]`, the owner's role).
+- Called twice: on `C` (refuse immediately if full) and right before saving (get the index).
+- The PIN is typed first, then the search runs, so the index lives in a register for only a few
+  instructions and needs no RAM variable.
+- Refuse a PIN already in the table (`ConfirmationLoop` stops at the first match, so a duplicate
+  would make one slot unreachable).
+- Save: `LDR` the word from `PinBuffer`, `STR` it to `UserPins` at `[base, index, LSL #2]`; `STR`
+  role 0 (user) to `UserRoles` at the same index, with its own base from `=UserRoles` (never an
+  offset from `UserPins`, see #21). The owner cannot create a second owner.
+
+**Decision: delete user.** The owner types the user's PIN; the search finds its slot. Slot 0 (owner)
+→ `REFUSED`: without an owner, nobody could clear a lockout or open the menu. No match → `NO USER`
+(never saved). Otherwise `STR` a word of 0 to the slot (a full word: `STRB` would leave three bytes of
+the old PIN, a slot that is neither empty nor matchable).
+
+**Decision: away mode (manual lockout).** Reuses state 2: same rules (only the owner's PIN opens,
+user PINs refused), so it is the same state. A new state that differs only in its message would add
+code with no new behavior. On entry: `SecureBox`, then `LockState` = 2 and `AttemptCount` = 3, so the
+first wrong PIN already costs 30 s exactly as in an automatic lockout (with the count at 0, a wrong
+PIN would cost nothing). It protects the box while the owner is away; it does not stop key presses.
+
+**Decision: `SecureBox` (shared lock step).** `LockBox` (`#` while unlocked), the menu's `#` and away
+mode all check the lid (PB12), then move the servo to locked. That part is one subroutine; each caller
+then writes its own `LockState` / `AttemptCount`, wipes the buffer and updates the screen. It returns a
+status in r5: 0 = locked, 1 = lid open (nothing changed). r5 is a status, not a state: the caller
+never stores it into `LockState` (away mode needs 2). Lid and servo parts are added when that
+hardware is built; until then it only returns 0.
+
+**Decision: return values (extends #45).** A routine that returns a value names its return register in
+its header comment; that register is not preserved. Results go in a register, not the flags: a
+register survives any instruction between the return and the check and is visible in the debugger;
+flags are destroyed by any flag-setting instruction (the power-up loop already hit that bug).
+
+**Decision: after an action, and the box's status.**
+- After a successful add or delete the box returns to state 3, so the owner chooses when to leave.
+- States 3–5 have their own key handling but count as **open** for auto re-lock: the latch is released
+  the whole time, so an owner who walks away mid-menu does not leave the box open.
+- A yellow LED shows states ≥3 (teammate; one more free GPIOA pin, not PA2/PA3/PA5/PA13/PA14).
+
+**Build order.** (1) `B` opens state 3, menu screen, `#` exits through `SecureBox`. (2) Away mode.
+(3) `FindEmptySlot` and add user. (4) Delete user.
 
