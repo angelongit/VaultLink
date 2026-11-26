@@ -56,7 +56,7 @@ one **Superseded by #N**. Never delete an entry.
 | 46 | LCD driver ported from Lab 6 as subroutines | Accepted |
 | 47 | The screen is drawn from `LockState` by one routine (`UpdateScreen`) | Accepted |
 | 48 | Damaged LCD (columns 9–11 dead): keep text in columns 1–8 | Accepted (module kept, 2026-11-24) |
-| 49 | Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox` | Accepted (slices 1–3 built; delete pending) |
+| 49 | Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox` | Accepted (all 4 slices built, 2026-11-26) |
 | 50 | Momentary messages through one `ShowMessage` routine; menu screen text | Accepted |
 | 51 | Thumb limits: `BEQ.W` for a far branch, `LTORG` for the literal pool | Accepted |
 
@@ -993,7 +993,7 @@ uses, so it is kept; no replacement was ordered. The 8-column limit stays for al
 
 ## #49: Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox`
 
-- **Date:** 2026-11-25 · **Status:** Accepted; slices 1–3 built and tested 2026-11-25, delete pending
+- **Date:** 2026-11-25 · **Status:** Accepted; slices 1–3 built 2026-11-25, slice 4 (delete) built 2026-11-26
 
 **Context.** `B` (owner only, unlocked) reaches `OwnerMenu`, which is an empty loop. The owner needs
 to add and delete users and to put the box in an owner-only mode.
@@ -1084,6 +1084,20 @@ flags are destroyed by any flag-setting instruction (the power-up loop already h
 - Screen text: menu `C:+  D:-` / `B:Away` (no title: the 16 working cells show the keys; `#` is not
   labeled because it means lock everywhere); add screen `PIN:` / `ADD USER`.
 
+**Built (slice 4, 2026-11-26).**
+- `D` first calls `FindUsedSlot`, a fourth search routine that starts at slot 1 (the owner can never
+  be deleted, so slot 0 does not count) and returns the first used slot 1–3, or 0xFF. With no users
+  the box shows `NO USERS` and stays in the menu: the mirror of `FULL` for add.
+- `PinReady` routes state 5 to `RemoveUser` with its own exact match (`BEQ.W`).
+- `RemoveUser`: `LockState` = 3 first, `FindPin`, then in order: not found (`BHS`) → `NO USERS`;
+  slot 0 (`BEQ`) → `DENIED`; otherwise `STR` a word of 0 into `UserPins[i]` and back to the menu.
+  One message covers "nobody to delete" and "PIN not found" (both: no such user).
+- Every search caller uses the same check, `CMP r12,#4` then `BHS` = not found. A `BLO` (inverted) in
+  `RemoveUser` would have sent a mistyped PIN to the store with r12 = 0xFF, writing 0 at
+  `UserPins` + 1020, outside the program's variables. `BHI` would miss a return of exactly 4.
+- The deleted slot's role word is left as is: every deletable user already has role 0, so it is
+  harmless, and the next add writes role 0 again.
+
 ---
 
 ## #50: Momentary messages through one `ShowMessage` routine
@@ -1099,7 +1113,8 @@ state 0 to the new screen, so the locked screen would have read `FULL`.
 The caller then branches to `ClearPass`, which redraws the screen of the current state. The caller
 picks the message; the routine never loads one itself.
 
-**Messages (8 columns, #48).** `FULL`, `EXISTS` (duplicate PIN); `REFUSED` and `NO USER` for delete.
+**Messages (8 columns, #48).** `FULL`, `EXISTS` (duplicate PIN), `DENIED` (owner's PIN typed in delete
+mode), `NO USERS` (no users to delete, or the typed PIN is not in the table).
 
 **Reasons.** Decision #47 stays true (the screen is drawn from `LockState`); one routine serves four
 messages; the print happens before the wait, so the message is visible during it.

@@ -38,14 +38,14 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | Lock states: keys by state, `#` to lock, owner-only menu key | ✅ Verified on hardware |
 | Lockout after 3 wrong PINs (owner PIN clears it, 30 s delay per failed attempt) | ✅ Verified on hardware |
 | 16×2 LCD: own driver as subroutines, `*` per digit, screen follows lock state | ✅ Verified on hardware |
-| Servo latch (TIM3 PWM on PA6) | ⬜ Next |
-| Auto re-lock (after a delay; `#` only with the lid closed) | ⬜ Planned |
-| Buzzer, status LEDs | ⬜ Planned |
-| Lid sensor and tamper alarm | ⬜ Planned |
 | Owner menu: open with `B`, `#` exits and locks (slice 1 of 4, #49) | ✅ Verified on hardware |
 | Owner menu: away mode through `SecureBox` (slice 2) | ✅ Verified on hardware |
 | Owner menu: add user, with duplicate and full checks (slice 3) | ✅ Verified on hardware |
-| Owner menu: delete user (slice 4) | 🟡 Next |
+| Owner menu: delete user, owner protected (slice 4) | ✅ Verified on hardware |
+| Servo latch (TIM3 PWM on PA6) | 🟡 Next |
+| Lid sensor in `SecureBox` (`#` locks only with the lid closed) | ⬜ Planned |
+| Auto re-lock after a delay (states 1 and 3–5) | ⬜ Planned |
+| Buzzer, status LEDs | ⬜ Planned |
 | Wi-Fi alerts and remote unlock (ESP-01) | ⬜ Planned (extra credit) |
 
 ## Hardware

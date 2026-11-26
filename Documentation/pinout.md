@@ -178,6 +178,22 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 | `C` with slot 3 now used | `FULL` ✅ (seen on the LCD; photo to add) | |
 | Owner after all of the above | slot 0 still `36 38 32 37`, role 1; owner opens the menu ✅ | [AdminMenu_Slice3_AddUser](AdminMenu_Slice3_AddUser.png) |
 
+**Owner menu, slice 4: delete user** (board, 2026-11-26). `UserPins` slots 1–3 at `0x20000010`–`0x20000018`.
+
+| Test | Result | Evidence |
+|---|---|---|
+| `D` | `PIN:` / `DELETE`, `LockState` 5 ✅ | [AdminMenu_Slice4_Delete](AdminMenu_Slice4_Delete.jpg) |
+| `D` with no users (temporary table with only the owner, and later after deleting everyone) | `NO USERS` for about 1 s, stays in the menu ✅ | [AdminMenu_Slice4_Delete](AdminMenu_Slice4_Delete.jpg) |
+| Delete `1234` | slot 1 = `00 00 00 00`, back to the menu ✅ | [AdminMenu_Slice4_Delete](AdminMenu_Slice4_Delete.jpg) |
+| Lock, then `1234` | wrong PIN: `AttemptCount` 1 ✅ | |
+| Delete `6827` (owner) | `DENIED`, slot 0 unchanged ✅ | [AdminMenu_Slice4_Delete](AdminMenu_Slice4_Delete.jpg) |
+| Delete an unknown PIN | `NO USERS`, nothing written ✅ | |
+| Add `4321` after the delete | stored in the freed slot 1 ✅ | |
+| Delete `4321` | slot 1 back to 0 ✅ | |
+
+Earlier messages, now photographed: `ADD USER` (slice 3) in the same image; `EXISTS` and `FULL` were
+seen on the LCD during slice 3.
+
 ## Register map (2026-11-22)
 
 Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).

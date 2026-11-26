@@ -177,6 +177,8 @@ AdminKeys
 	BEQ.W AwayMode
 	CMP r9,#0x43 ;; check if "C" is precced, setup for adding a password
 	BEQ.W AddUser ;; Target branch out of 16-bit range so .W append forces 32 bit encoding
+	CMP r9,#0x44 ;;Check if "D" is pressed, setup for deleting password
+	BEQ.W DeleteUser
 	B CounterReset ;;ignore any key that isnt listed in the menu;
 	
 	
@@ -228,6 +230,8 @@ PinReady
 	LDRB r3,[r3]
 	CMP r3,#4
 	BEQ.W SaveUser
+	CMP r3,#5
+	BEQ.W RemoveUser
 	LDR r3,[r6] ;;loading live pin at r3 for comparison later
 	LDR r7,=UserPins ;;storing address of live pins in scratch;
 	LDR r10,=UserRoles ;;storing address of live roles in scratch;
@@ -319,13 +323,29 @@ AddUser
 	MOV r12,#4
 	STRB r12,[r7] 
 	B ClearPass
-	
+
+DeleteUser
+	BL FindUsedSlot
+	CMP r12,#4
+	BHS DelNone
+	LDR r7,=LockState
+	MOV r12,#5
+	STRB r12,[r7] 
+	B ClearPass
 	
 AddFull
 	LDR r7,=OptionFull
 	BL ShowMessage
 	B ClearPass
+DelNone
+	LDR r7,=OptionNone
+	BL ShowMessage
+	B ClearPass
 
+DelDenied
+	LDR r7,=OptionDenied
+	BL ShowMessage
+	B ClearPass
 SaveUser
 	LDR r3,=LockState
 	MOV r7,#3
@@ -343,7 +363,22 @@ SaveUser
 	LDR r10,=UserRoles
 	STR r3,[r10,r12,LSL#2]	
 	B ClearPass
-	
+
+RemoveUser
+	LDR r3,=LockState
+	MOV r7,#3
+	STRB r7,[r3]
+	LDR r3,[r6]
+	BL FindPin
+	CMP r12,#4
+	BHS DelNone
+	CMP r12,#0
+	BEQ	 DelDenied
+	MOV r3,#0
+	LDR r10,=UserPins
+	STR r3,[r10,r12,LSL#2]
+	B ClearPass
+
 	
 	
 PinExists
@@ -470,6 +505,8 @@ UpdateScreen FUNCTION
 	BEQ ScreenAdmin
 	CMP r3,#4
 	BEQ ScreenAdd	
+	CMP r3,#5
+	BEQ ScreenDel
 	
 
 ScreenLocked
@@ -521,6 +558,17 @@ ScreenAdd
 	BL LCDCommand
 	B ScreenDone
 	
+ScreenDel
+	BL ResetPrompt
+	MOV r3,#0xC0
+	LDR r7,=OptionDel
+	BL LCDCommand
+	BL LCDString
+	MOV r3,#0x84
+	BL LCDCommand
+	B ScreenDone
+	
+	
 ScreenDone
 	LDMIA SP!,{r3,r7,PC}	
 	ENDP
@@ -547,6 +595,22 @@ SlotLoop
 	BLO SlotLoop
 	MOV r12,#0xFF
 SlotDone
+	LDMIA SP!,{r3,r5,PC}
+	ENDP
+;;RETURNS R12: slots 1-3 or 0xFF if there are no slots taken.
+FindUsedSlot FUNCTION
+	STMDB sp!,{r3,r5,LR}
+	LDR r3,=UserPins ;;userpins base address
+	MOV r12,#1 ;;counter register, admin pin cannot be deleted so it starts at 1
+SlotLoop2	
+	LDR r5,[r3,r12,LSL#2]
+	CMP r5,#0
+	BNE SlotDone2
+	ADD r12,r12,#1
+	CMP r12,#4
+	BLO SlotLoop2
+	MOV r12,#0xFF
+SlotDone2
 	LDMIA SP!,{r3,r5,PC}
 	ENDP
 
@@ -588,7 +652,10 @@ OptionAddDel DCB "C:+  D:-",0
 OptionAway DCB "B:Away",0
 OptionFull DCB "FULL",0
 OptionAdd DCB "ADD USER",0
+OptionDel DCB "DELETE",0
 OptionExists DCB "EXISTS",0
+OptionNone DCB "NO USERS",0
+OptionDenied DCB "DENIED",0
 
 	AREA CurrentVariables, DATA, READWRITE
 PinBuffer SPACE 4 ;holds pin digits typed so far
