@@ -4,12 +4,9 @@
 	
 	EXPORT __main
 	
+ServoLocked EQU 1000
+ServoOpen EQU 2000
 __main 	PROC		
-	
-	
-
-		
-		
 	
 		;;clearing RAM;;
 		LDR r0, =PinBuffer
@@ -27,9 +24,60 @@ __main 	PROC
 		;setting up AHB1ENR
 		LDR r0,=0x40023830 ; address of AH1BENR
 		LDR r1,[r0] ;read : r1 = whats at/in address at r0
-		ORR R1,R1,#6 ; OR with the contents of r1, setting bit 2 and 1(0110) corresponding to GPIOC and GPIOB
+		ORR R1,R1,#7 ; OR with the contents of r1, setting bit 2 and 1(0111) corresponding to GPIOC and GPIOB AND GPIOA
 		STR r1,[r0] ;write: putting it back
 		
+		;;TA PROVIDED CODE;; 
+		;;SERVO BRINGUP;;
+
+        LDR R0, =0x40023840; RCC_APB1ENR
+		LDR R1,[R0]
+		ORR R1,R1,#0x2
+		STR R1,[R0]
+
+        ; Configure PA6 as Alternate Function (AF2 for TIM3_CH1)
+        LDR R0, =0x40020000      ; GPIOA base address   
+
+        ; Set MODER[13:12] = 10 (AF mode)
+        LDR R1, [R0]
+        BIC R1, R1, #0x3000                             
+        ORR R1, R1, #0x2000                               
+        STR R1, [R0]
+
+        ; Set AFRL[27:24] = 0010 (AF2 for PA6)
+        LDR R1, [R0, #0x20]
+        BIC R1, R1, #0xF000000                               
+        ORR R1, R1, #0x2000000                              
+        STR R1, [R0, #0x20]
+
+        ; Configure TIM3 for 50Hz PWM
+        LDR R0, =0x40000400      ; TIM3 base
+
+        ; Prescaler = 15 (1 microsecond) 19999 (20ms, 50Hz)
+        LDR R1, =15
+        STR R1, [R0, #0x28]      ; TIM3_PSC
+
+        ; ARR = 1000 ? 1kHz
+        LDR R1, =19999	
+        STR R1, [R0, #0x2C]      ; TIM3_ARR
+
+        ; CCR1 = 1000 initially
+        MOV R1, #ServoLocked
+        STR R1, [R0, #0x34]      ; TIM3_CCR1
+
+        ; Set PWM Mode 1 and enable preload
+        LDR R1, =0x0060
+        ORR R1, R1, #0x0008
+        STR R1, [R0, #0x18]      ; TIM3_CCMR1
+
+        ; Enable CH1 output
+        MOV R1, #1
+        STR R1, [R0, #0x20]      ; TIM3_CCER
+
+        ; Enable ARPE and CEN
+        LDR R1, [R0, #0x00]
+        ORR R1, R1, #0x81
+        STR R1, [R0, #0x00]      ; TIM3_CR1
 		
 		;;Setting up I/O in GPIOB 
 		
@@ -66,6 +114,7 @@ __main 	PROC
 		LDR r9,=UserPins
 		LDR r10,=UserRoles
 		MOV r3,#0
+			
 CopyLoop
 		LDR r5,[r4,r3,LSL#2] ;;LOAD DEFAULT USERS INTO R5
 		STR r5,[r9,r3,LSL#2] ;;COPY DEFAULT USERS INTO RAM AT R9
@@ -282,6 +331,7 @@ NormalUnlock ;; standard unlock procedure ;;
 	LDR r7,=LockState
 	MOV r12,#1
 	STRB r12,[r7] ;; [UNLOCKED STATE = 1]
+	BL OpenBox
 	B ClearPass
 	
 LockoutDelay
@@ -576,10 +626,22 @@ ScreenDone
 ;; returns r5:0 = locked, r5:1 = lid open
 SecureBox FUNCTION
 	STMDB SP!,{r3,r7,LR}
+	;;lid check here, return 1 if open;
+	LDR r3, =0x40000400 
+	MOV r7,#ServoLocked
+	STR r7,[r3,#0x34]
 	MOV r5,#0
 	LDMIA SP!,{r3,r7,PC}
 	ENDP
 		
+;; moves latch open, no return;;
+OpenBox FUNCTION
+	STMDB SP!,{r3,r7,LR}
+	LDR r3, =0x40000400 
+	MOV r7,#ServoOpen
+	STR r7,[r3,#0x34]
+	LDMIA SP!,{r3,r7,PC}
+	ENDP
 		
 ;; RETURNS R12: slots 0-3 , or 0xFF is table is full
 FindEmptySlot FUNCTION

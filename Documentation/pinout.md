@@ -10,7 +10,7 @@
 | PA0 | Buzzer + | Alternate function | TIM2 CH1 | Planned |
 | PA1 | Red LED (330 Ω to GND) | Output | GPIO | Planned |
 | PA4 | ESP-01 RST | Output | GPIO | Planned |
-| PA6 | Servo signal | Alternate function | TIM3 CH1 | Planned |
+| PA6 | Servo signal (Arduino D12) | Alternate function (AF2) | TIM3 CH1 | Tested |
 | PA8 | Green LED (330 Ω to GND) | Output | GPIO | Planned |
 | PA9 | ESP-01 RX | Alternate function | USART1 TX | Planned |
 | PA10 | ESP-01 TX | Alternate function | USART1 RX | Planned |
@@ -193,6 +193,15 @@ Known gap: after unlocking, the keypad still accepted PINs. Fixed 2026-11-20 (#3
 
 Earlier messages, now photographed: `ADD USER` (slice 3) in the same image; `EXISTS` and `FULL` were
 seen on the LCD during slice 3.
+
+**Servo latch** (board, 2026-11-26; SG90 on the Nucleo 5 V pin, no load).
+
+| Test | Result | Evidence |
+|---|---|---|
+| Keil peripheral view after setup | PSC `0x0F`, ARR `0x4E1F`, CCR1 `0x3E8`, CCMR1 `0x68`, CCER 1, CEN set, CNT running; GPIOA MODER6 = `10` ✅ | [Servo_TIM3_CCR1](Servo_TIM3_CCR1.png) |
+| Power-up | servo moves to the 1000 µs end and holds (resists turning by hand); LCD steady ✅ | |
+| CCR1 changed to 2000 and 1500 in the debugger | servo swings to the other end, then the middle ✅ | |
+| Unlock, `#`, unlock, away mode, ... | CCR1 `0x3E8` ↔ `0x7D0` in step with each lock and unlock; never changes on wrong PINs or menu screens ✅ | [Servo_TIM3_CCR1](Servo_TIM3_CCR1.png) |
 
 ## Register map (2026-11-22)
 

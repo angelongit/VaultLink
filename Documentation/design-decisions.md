@@ -59,6 +59,7 @@ one **Superseded by #N**. Never delete an entry.
 | 49 | Owner menu: admin states 3–5, add/delete user, away mode, shared `SecureBox` | Accepted (all 4 slices built, 2026-11-26) |
 | 50 | Momentary messages through one `ShowMessage` routine; menu screen text | Accepted |
 | 51 | Thumb limits: `BEQ.W` for a far branch, `LTORG` for the literal pool | Accepted |
+| 52 | Servo latch: TIM3 CH1 PWM on PA6, named positions, `OpenBox` / `SecureBox` | Accepted (tested on the bench, 2026-11-26) |
 
 ---
 
@@ -1137,4 +1138,44 @@ unconditional branch), so the pool is in reach of both halves.
 
 **Rule.** Data placed inside a code area must never be reached by execution: only after an
 unconditional branch or between routines.
+
+---
+
+## #52: Servo latch: TIM3 CH1 PWM on PA6, named positions, `OpenBox` / `SecureBox`
+
+- **Date:** 2026-11-26 · **Status:** Accepted; tested on the bench (servo powered from the Nucleo 5 V
+  pin, no load)
+
+**Source.** Adapted from the TA's `brightness.s` (TIM2 CH1 on PA0, 84 MHz clock, 1 kHz fade). Changed:
+timer, pin, alternate function, prescaler, period, clock enables, and the fade loop removed.
+
+**Timer numbers (16 MHz clock, measured in #43).**
+- PSC = 15: the prescaler counts 0 to 15, so it divides by 16, giving a 1 MHz (1 µs) tick.
+- ARR = 19999: the counter runs 0 to 19999, 20,000 ticks = 20 ms (50 Hz), the servo's frame.
+- CCR1 = pulse width in µs, directly: 1000 = 1 ms, 2000 = 2 ms (the SG90's normal range is about
+  1000 to 2000; 3000 was rejected: past the mechanical stop it stalls, draws peak current and wears
+  the gears).
+- CCMR1 = 0x68 (PWM mode 1 + preload), CCER = 1 (channel 1 output on), CR1 = 0x81 (ARPE + CEN).
+
+**Pins and clocks.** AHB1ENR `ORR #7` (GPIOA, B, C in one read-modify-write); APB1ENR bit 1 (TIM3)
+with read-modify-write, never a plain store (the template's `STR` would clear every other enable bit).
+PA6: MODER bits 13:12 = `10` (alternate function: the timer drives the pin, not ODR); AFRL bits 27:24
+= 2 (AF2 = TIM3_CH1; AFRL has 4 bits per pin, MODER 2). The timer's own registers use plain stores:
+nothing else uses TIM3.
+
+**Placement.** The servo setup runs right after the clock enables and before the GPIOB and GPIOC
+setup, so r0 still ends as the GPIOC base for the scan loop (a first placement left r0 = TIM3 base).
+
+**Positions.** `ServoLocked EQU 1000` and `ServoOpen EQU 2000` at the top of the file: power-up,
+`SecureBox` and `OpenBox` use the names, so tuning on the mounted latch is a one-line change.
+
+**Behavior.** Power-up writes `ServoLocked` before the counter starts (fail-secure, #38). Every path to
+`LockState` = 1 goes through `NormalUnlock`, which calls `OpenBox`. `SecureBox` (used by `LockBox` and
+away mode) writes `ServoLocked`; its lid check (PB12) goes before that write, so the latch never closes
+onto an open lid. Wrong PINs, lockout and menu screens never move the servo. `OpenBox` saves r3, r7, LR
+and returns nothing (opening cannot be refused); it is also the routine a remote unlock would call.
+
+**Debugging note.** The first debug session ran in Keil's simulator (status bar "Simulation"): every
+peripheral access failed with error 65 and all registers read 0. Fix: Options for Target, Debug tab,
+"Use: ST-Link Debugger".
 
