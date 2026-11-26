@@ -83,12 +83,24 @@ __main 	PROC
 		
 		LDR r0,=0x40020400
 		LDR r1,[r0]
-		LDR r7,=0x000FFFFF ; cant use this as a constant, loading it into a register due to length
-		BIC r1,r1,r7 ;; Clearing lower 20 bits of register
+		LDR r7,=0x030FFFFF ; cant use this as a constant, loading it into a register due to length
+		BIC r1,r1,r7 ;; Clearing lower 20 bits of register and PB12 for lid (input)
 		LDR r7,=0x55555 ; 5 = 0101, loading this into register due to length
 		ORR r1,r1,r7 ;; setting lower 20 pits as output
 		STR r1,[r0] ;; storing in address 
+		;;setting up PU/PD
+		LDR r0,=0x40020400
+		LDR r1,[r0,#0x0C]
+		LDR r7,=0x03000000
+		BIC r1,r1,r7
+		LDR r7,=0x01000000
+		ORR r1,r1,r7
+		STR r1,[r0,#0x0C]
+		
+		
+		
 		BL LCDInit
+		
 		
 		;SEND ENTER
 		BL ResetPrompt
@@ -261,7 +273,7 @@ LockBox
 	LDR r3,=LockState
 	BL SecureBox
 	CMP r5,#0
-	BNE ClearPass
+	BNE.W LidOpenMsg
 	MOV r5,#0
 	STRB r5,[r3] ;;insert 0 into LockState, forcing the box to lock [0 = Locked, 1 = Unlocked]
 	B ClearPass
@@ -356,7 +368,7 @@ OwnerMenu
 AwayMode
 	BL SecureBox 
 	CMP r5,#0
-	BNE ClearPass
+	BNE LidOpenMsg
 	MOV r3,#2
 	LDR r7,=LockState
 	STRB r3,[r7]
@@ -391,11 +403,15 @@ DelNone
 	LDR r7,=OptionNone
 	BL ShowMessage
 	B ClearPass
-
 DelDenied
 	LDR r7,=OptionDenied
 	BL ShowMessage
 	B ClearPass
+LidOpenMsg
+	LDR r7,=StateLidOpen
+	BL ShowMessage
+	B ClearPass
+	
 SaveUser
 	LDR r3,=LockState
 	MOV r7,#3
@@ -625,13 +641,23 @@ ScreenDone
 
 ;; returns r5:0 = locked, r5:1 = lid open
 SecureBox FUNCTION
-	STMDB SP!,{r3,r7,LR}
-	;;lid check here, return 1 if open;
+	STMDB SP!,{r3,r7,r12,LR}
+	;;lid check here, return 1 if open;d
+	LDR r3, =0x40020400
+	LDR r7,[r3,#0x10]
+	MOV r12,#0x1000
+	AND r7,r7,r12
+	CMP r7,#0
+	BNE LidOpen
 	LDR r3, =0x40000400 
 	MOV r7,#ServoLocked
 	STR r7,[r3,#0x34]
 	MOV r5,#0
-	LDMIA SP!,{r3,r7,PC}
+	B SecureDone
+LidOpen
+	MOV r5,#1
+SecureDone
+	LDMIA SP!,{r3,r7,r12,PC}
 	ENDP
 		
 ;; moves latch open, no return;;
@@ -718,6 +744,7 @@ OptionDel DCB "DELETE",0
 OptionExists DCB "EXISTS",0
 OptionNone DCB "NO USERS",0
 OptionDenied DCB "DENIED",0
+StateLidOpen DCB "LID OPEN",0
 
 	AREA CurrentVariables, DATA, READWRITE
 PinBuffer SPACE 4 ;holds pin digits typed so far

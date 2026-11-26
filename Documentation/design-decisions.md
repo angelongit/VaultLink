@@ -60,6 +60,7 @@ one **Superseded by #N**. Never delete an entry.
 | 50 | Momentary messages through one `ShowMessage` routine; menu screen text | Accepted |
 | 51 | Thumb limits: `BEQ.W` for a far branch, `LTORG` for the literal pool | Accepted |
 | 52 | Servo latch: TIM3 CH1 PWM on PA6, named positions, `OpenBox` / `SecureBox` | Accepted (tested on the bench, 2026-11-26) |
+| 53 | Lid switch on PB12 (pull-up, closed = 0) read in `SecureBox`; `LID OPEN` message | Accepted (tested with a jumper wire, 2026-11-26) |
 
 ---
 
@@ -1178,4 +1179,36 @@ and returns nothing (opening cannot be refused); it is also the routine a remote
 **Debugging note.** The first debug session ran in Keil's simulator (status bar "Simulation"): every
 peripheral access failed with error 65 and all registers read 0. Fix: Options for Target, Debug tab,
 "Use: ST-Link Debugger".
+
+---
+
+## #53: Lid switch on PB12 (pull-up, closed = 0) read in `SecureBox`; `LID OPEN` message
+
+- **Date:** 2026-11-26 · **Status:** Accepted; tested with a jumper wire from PB12 to GND standing in
+  for the reed switch (the reed switches arrive Saturday)
+
+**Wiring.** Reed switch (normally open) from PB12 to GND; magnet in the lid. Lid closed: the switch
+closes, PB12 reads 0. Lid open: the switch opens, the internal pull-up holds PB12 at 1.
+
+**Setup (GPIOB, shared with the LCD, so read-modify-write).**
+- MODER: PB12 = `00` (input). Folded into the existing GPIOB write: the clear mask grew from
+  `0x000FFFFF` to `0x030FFFFF` (PB0–PB9 and PB12); the `ORR` sets only PB0–PB9 to output.
+- PUPDR: its own read-modify-write, mask `0x03000000`, value `0x01000000` (bits 25:24 = `01`,
+  pull-up). A mask clears exactly the bits about to be set: in MODER that is PB0–PB9 and PB12 (all
+  rewritten), in PUPDR only PB12. First try `0x00100000` set bit 20 (pin 10's field): each hex digit
+  is 4 bits, so pin 12's field (bit 24) needs six zeros after the 1.
+
+**Why a pull-up and active low.** Without the pull-up an open switch leaves PB12 floating (random
+reads). With it, a cut or unplugged wire reads 1 = "lid open", so the box refuses to lock rather than
+reporting a false "closed": the safe failure for a lock.
+
+**`SecureBox` order.** Read GPIOB IDR (+0x10), keep bit 12 (`0x1000`). Bit set: lid open, r5 = 1,
+servo untouched. Bit clear: servo to `ServoLocked`, r5 = 0. Two paths, one exit (`SecureDone`), push
+and pop lists match (r3, r7, r12, LR). The lid is read before the servo moves, so the latch never closes
+onto an open lid. Bugs caught on the way: branching to `OpenBox` on "lid open" (it would have opened
+the latch and leaked 16 bytes of stack per press), and the closed path falling into the `r5 = 1` line
+(it would always have reported "lid open" after locking the latch).
+
+**Screen.** `LockBox` and `AwayMode` branch to `LidOpenMsg` when r5 is not 0: `LID OPEN` (8 columns)
+through `ShowMessage`, then `ClearPass` redraws the unchanged state (`OPEN` or the menu).
 

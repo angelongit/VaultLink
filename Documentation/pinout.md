@@ -27,7 +27,7 @@ LCD wired 2026-11-22: D0–D7 = PB0–PB7, RS = PB8, E = PB9, RW = GND (PB10 not
 | PB8 | LCD RS | Output | Tested (#44) |
 | PB9 | LCD E | Output | Tested (#44) |
 | — | LCD RW tied to GND (write only) | — | Tested (#44) |
-| PB12 | Lid reed switch (other wire to GND) | Input, pull-up, EXTI12 | Planned |
+| PB12 | Lid reed switch (other wire to GND; morpho CN10 pin 16) | Input, pull-up (polled in `SecureBox`) | Tested with a jumper |
 
 ## GPIOC: keypad
 
@@ -202,6 +202,16 @@ seen on the LCD during slice 3.
 | Power-up | servo moves to the 1000 µs end and holds (resists turning by hand); LCD steady ✅ | |
 | CCR1 changed to 2000 and 1500 in the debugger | servo swings to the other end, then the middle ✅ | |
 | Unlock, `#`, unlock, away mode, ... | CCR1 `0x3E8` ↔ `0x7D0` in step with each lock and unlock; never changes on wrong PINs or menu screens ✅ | [Servo_TIM3_CCR1](Servo_TIM3_CCR1.png) |
+
+**Lid switch** (board, 2026-11-26; jumper wire PB12 to GND = lid closed).
+
+| Test | Result | Evidence |
+|---|---|---|
+| GPIOB panel after setup | MODER12 = `00`, PUPDR12 = `01`; IDR12 = 0 with the jumper, 1 without ✅ | |
+| Jumper in: unlock, `#` | `LOCKED`, servo to 1000 ✅ | |
+| Jumper out: unlock, `#` | `LID OPEN` for about 1 s, back to `OPEN`, servo does not move ✅ | [Lid_PB12_LidOpen](Lid_PB12_LidOpen.jpg) |
+| Jumper out: menu, `B` (away) | `LID OPEN`, back to the menu, `LockState` stays 3 ✅ | [Lid_PB12_LidOpen](Lid_PB12_LidOpen.jpg) |
+| Jumper in: `#` from the menu | `LOCKED` ✅ | |
 
 ## Register map (2026-11-22)
 
