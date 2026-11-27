@@ -6,6 +6,7 @@
 	
 ServoLocked EQU 1000
 ServoOpen EQU 2000
+TimeoutLock EQU 10
 __main 	PROC		
 	
 		;;clearing RAM;;
@@ -19,6 +20,8 @@ __main 	PROC
 		LDR r0,=LockState
 		STRB r1,[r0]
 		LDR r0,=ActiveRole
+		STRB r1,[r0]
+		LDR r0,=IdleSeconds
 		STRB r1,[r0]
 		
 		;setting up AHB1ENR
@@ -78,6 +81,16 @@ __main 	PROC
         LDR R1, [R0, #0x00]
         ORR R1, R1, #0x81
         STR R1, [R0, #0x00]      ; TIM3_CR1
+		
+		;; AUTO RELOCK USING SYSTICK;;
+		LDR r1,=0xE000E010 ;systick base address
+		LDR r3,=15999999 ;1 second per loop, 16Mhz clk - 1
+		STR r3,[r1,#0x04] ;loading the reload value 
+		MOV r3,#0
+		STR r3,[r1,#0x08] ; storing 0 in current value register to clear current count
+		MOV r3,#5
+		STR r3,[r1,#0x00] ; enabling clock, clksource, and setting it to processor clock
+		
 		
 		;;Setting up I/O in GPIOB 
 		
@@ -149,7 +162,29 @@ CopyLoop
 		LDR r6,=PinBuffer ;;[r6 = address of PinBuffer]
 		LDR r11,=KeyValues ;; loads address of keyvalues into r11
 CounterReset
+		LDR r3,=0xE000E010
+		LDR r3,[r3]
+		TST r3,#0x10000
+		BEQ NoTick
+Tick
+		LDR r3,=LockState
+		LDRB r3,[r3]
+		CMP r3,#0 ;;check if locked;;
+		BEQ NoTick
+		CMP r3,#2 ;;check locked
+		BEQ NoTick
+		
+		LDR r7,=IdleSeconds
+		LDRB r3,[r7]
+		ADD r3,r3,#1
+		STRB r3,[r7]
+		
+		CMP r3,#TimeoutLock
+		BHS.W AutoRelock
+
+NoTick
 		MOV r8,#0 ;counter register	
+			
 PatternCheck	
 		LDRB r9,[r1,r8] ;;LDRB : each table entry is one byte, writing plain LDR would grab all four of our table entries; ;;lookup;;
 		LDR r7,[r0,#0x14] ;; writing ODR contents to scratch register to modify ;;read
@@ -213,6 +248,9 @@ BounceDelay
 
 	;;accounting for edgecases;;
 Filter
+	LDR r3,=IdleSeconds ;;if any button pressed, reset idle second counter to 0;
+	MOV r7,#0
+	STRB r7,[r3]
 	LDR r3,=LockState
 	LDRB r3,[r3]
 	CMP r3,#1
@@ -376,6 +414,29 @@ AwayMode
 	LDR r7,=AttemptCount
 	STRB r3,[r7]
 	B ClearPass	
+
+AutoRelock
+	BL SecureBox
+	CMP r5,#0
+	BEQ Locked
+	;;lid open path;;
+	;;add buzzer here;;
+	LDR r3,=IdleSeconds
+	MOV r7,#TimeoutLock
+	STRB r7,[r3]
+	B CounterReset
+	
+	;; lid closed
+Locked
+	LDR r3,=IdleSeconds ;;if any button pressed, reset idle second counter to 0;
+	MOV r7,#0
+	STRB r7,[r3]
+	MOV r5,#0
+	LDR r3,=LockState
+	STRB r5,[r3] ;;insert 0 into LockState, forcing the box to lock [0 = Locked, 1 = Unlocked]
+	B ClearPass
+	
+
 
 AddUser
 	BL FindEmptySlot
@@ -750,6 +811,7 @@ StateLidOpen DCB "LID OPEN",0
 PinBuffer SPACE 4 ;holds pin digits typed so far
 DigitCount SPACE 1 ; how many digits are in PinBuffer
 AttemptCount SPACE 1;
+IdleSeconds SPACE 1;
 LockState SPACE 1;	
 ActiveRole SPACE 1;
 	ALIGN

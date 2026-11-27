@@ -213,6 +213,19 @@ seen on the LCD during slice 3.
 | Jumper out: menu, `B` (away) | `LID OPEN`, back to the menu, `LockState` stays 3 ✅ | [Lid_PB12_LidOpen](Lid_PB12_LidOpen.jpg) |
 | Jumper in: `#` from the menu | `LOCKED` ✅ | |
 
+**Auto re-lock** (board, 2026-11-27; `TimeoutLock` = 10 s for testing; jumper wire as the lid).
+
+| Test | Result | Evidence |
+|---|---|---|
+| Unlock, hands off | `IdleSeconds` counts 1 to 9, then the box locks at 10 s (`LockState` 0, servo locked), count back to 0 ✅ | [AutoRelock_SysTick](AutoRelock_SysTick.png) |
+| Unlock, press a key every few seconds | count drops back to 0 on each key; never re-locks ✅ | |
+| Owner menu, hands off | re-locks from state 3 after 10 s ✅ | |
+| Lid open past the timeout | no lock, nothing on the screen, retried every second; jumper in: locks within about 1 s ✅ | [AutoRelock_SysTick](AutoRelock_SysTick.png) |
+
+The test showed the count climbing past the timeout (`0A`, `0B`, `0C`) while the lid stayed open; a
+byte would wrap after 255 and pause the retries for one timeout. Fixed after the test: the lid-open path
+stores `TimeoutLock` back, so the count holds there.
+
 ## Register map (2026-11-22)
 
 Also as a PDF: [VaultLink_Register_Map.pdf](VaultLink_Register_Map.pdf).
@@ -245,6 +258,8 @@ address · r12 slot counter, then values to store.
 **Copy loop (setup):** r3 counter · r4 `DefaultPins` · r8 `DefaultRoles` · r9 `UserPins` ·
 r10 `UserRoles` · r5 word being copied.
 
-**RAM:** `PinBuffer` `…04–07`, `DigitCount` `…08`, `AttemptCount` `…09`, `LockState` `…0A`,
-`ActiveRole` `…0B`, `UserPins` `…0C–1B`, `UserRoles` `…1C–2B` (all `0x2000xxxx`; use the labels).
+**RAM (since 2026-11-27, `IdleSeconds` added):** `PinBuffer` `…04–07`, `DigitCount` `…08`,
+`AttemptCount` `…09`, `IdleSeconds` `…0A`, `LockState` `…0B`, `ActiveRole` `…0C`, padding `…0D–0F`,
+`UserPins` `…10–1F`, `UserRoles` `…20–2F` (all `0x2000xxxx`; use the labels). Test entries before
+2026-11-27 use the older layout (`LockState` at `…0A`, `UserPins` at `…0C`).
 

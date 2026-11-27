@@ -44,8 +44,8 @@ The lock is designed to work fully without Wi-Fi; the wireless features are an e
 | Owner menu: delete user, owner protected (slice 4) | ✅ Verified on hardware |
 | Servo latch: TIM3 PWM on PA6, opens on unlock, closes on lock (#52) | ✅ Verified on the bench |
 | Lid switch on PB12 in `SecureBox` (`#` and away mode lock only with the lid closed, #53) | ✅ Verified (jumper wire; reed switch Sunday) |
-| Auto re-lock after a delay (states 1 and 3–5) | 🟡 Next |
-| Buzzer, status LEDs | ⬜ Planned |
+| Auto re-lock: SysTick, states 1 and 3–5, waits while the lid is open (#54) | ✅ Verified on hardware |
+| Buzzer, status LEDs | 🟡 Next |
 | Wi-Fi alerts and remote unlock (ESP-01) | ⬜ Planned (extra credit) |
 
 ## Hardware

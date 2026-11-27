@@ -61,6 +61,7 @@ one **Superseded by #N**. Never delete an entry.
 | 51 | Thumb limits: `BEQ.W` for a far branch, `LTORG` for the literal pool | Accepted |
 | 52 | Servo latch: TIM3 CH1 PWM on PA6, named positions, `OpenBox` / `SecureBox` | Accepted (tested on the bench, 2026-11-26) |
 | 53 | Lid switch on PB12 (pull-up, closed = 0) read in `SecureBox`; `LID OPEN` message | Accepted (tested with a jumper wire, 2026-11-26) |
+| 54 | Auto re-lock: SysTick 1 s tick polled in the scan loop, idle count, quiet retry while the lid is open | Accepted (tested, 2026-11-27) |
 
 ---
 
@@ -1211,4 +1212,48 @@ the latch and leaked 16 bytes of stack per press), and the closed path falling i
 
 **Screen.** `LockBox` and `AwayMode` branch to `LidOpenMsg` when r5 is not 0: `LID OPEN` (8 columns)
 through `ShowMessage`, then `ClearPass` redraws the unchanged state (`OPEN` or the menu).
+
+---
+
+## #54: Auto re-lock: SysTick 1 s tick polled in the scan loop, idle count, quiet retry
+
+- **Date:** 2026-11-27 · **Status:** Accepted; tested with `TimeoutLock` = 10 s (set to the real
+  value, e.g. 30 s, before the demo)
+
+**Options.** (A) Count scan-loop passes: about 1 ms per pass, but the time per pass changes whenever a
+key is handled (bounce delay, LCD writes, 1 s messages), so the count is not seconds. (B) SysTick, the
+Cortex-M core's 24-bit down-counter, clocked independently of what the code is doing.
+
+**Decision.** (B). Documented in PM0214 (Cortex-M4 programming manual) section 4.5, not RM0368: SysTick
+belongs to the ARM core. Base `0xE000E010`: CTRL +0x00, LOAD +0x04, VAL +0x08.
+- LOAD = 15,999,999: the counter runs LOAD to 0, LOAD + 1 = 16,000,000 clocks = 1 s at 16 MHz (fits
+  24 bits, max 16,777,215; needs `LDR =`).
+- VAL = 0 clears the current count; CTRL = 5 last (ENABLE = 1, TICKINT = 0, CLKSOURCE = 1 = processor
+  clock): enabled only after it is fully set up.
+- Polling, not an interrupt: the scan loop already runs constantly; an interrupt needs a handler in the
+  vector table, more than a 1 s re-lock needs. Set up once at power-up and left running; the software
+  decides what a tick means.
+
+**In the scan loop (`CounterReset`, once per full scan).** Read CTRL once (reading clears COUNTFLAG),
+`TST` bit 16 (`0x10000`), no tick → `NoTick` (the common case, kept short). On a tick: states 0 and 2
+(closed) are skipped; otherwise `IdleSeconds` (1-byte RAM variable, cleared at startup) + 1, saved,
+compared with `TimeoutLock` (`EQU`) using `BHS.W` (a far, out-of-range target; `BHS` so a skipped value
+still triggers).
+
+**Activity.** The top of `Filter` sets `IdleSeconds` = 0: it runs once per real key (decoded, released,
+debounced). Any key counts, including ignored ones.
+
+**`AutoRelock`.** `SecureBox` first. Lid closed: `IdleSeconds` = 0, `LockState` = 0, `ClearPass`
+(`LOCKED`). Lid open: nothing on screen (a `LID OPEN` message every second would block the keypad for
+1 s each time), `IdleSeconds` = `TimeoutLock` so the next tick retries and the count cannot climb and
+wrap after 255; back to scanning. The box locks within about 1 s of the lid closing. A buzzer beep on
+each refused retry is the planned reminder (marked in the code).
+
+**Known limitation.** COUNTFLAG holds one tick. During a blocking wait (1 s `ShowMessage`, 30 s lockout)
+extra ticks are lost. Harmless here: lockout is not an open state, and one lost second does not matter
+for a 30 s re-lock. Exact timing through blocking code would need the SysTick interrupt.
+
+**RAM layout changed.** `IdleSeconds` sits between `AttemptCount` and `LockState`, so `LockState` moved to
+`0x2000000B` and `UserPins` to `0x20000010` (`ALIGN` padding). Code uses labels, so only the memory-window
+addresses in older test entries changed.
 
